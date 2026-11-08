@@ -17,6 +17,8 @@ captures/
 # build artifacts
 *.apk
 *.aab
+*.png
+*.log
 # execution scratch (plan ledger, build logs)
 .superpowers/
 

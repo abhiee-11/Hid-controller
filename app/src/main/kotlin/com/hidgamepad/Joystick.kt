@@ -3,6 +3,7 @@ package com.hidgamepad
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -38,13 +39,17 @@ val DpadHeld = Color(0xFF9EB1D8)
 
 /** One analog stick drawn on a Canvas. Handles one pointer at a time; other pointers can
  *  rest on buttons elsewhere because this widget only claims its own hit area.
- *  Emits HID-style values: X right = +1, Y up = +1, dead-zoned, centered on release. */
+ *  Emits HID-style values: X right = +1, Y down = +1, dead-zoned, centered on release. */
 @Composable
-fun JoystickControl(dpSize: Dp, onMoved: (x: Float, y: Float) -> Unit) {
+fun JoystickControl(
+    dpSize: Dp,
+    modifier: Modifier = Modifier,
+    onMoved: (x: Float, y: Float) -> Unit,
+) {
     val onMovedNow by rememberUpdatedState(onMoved)
     var activeId by remember { mutableStateOf(-1L) }
     var knob by remember { mutableStateOf(Offset.Zero) }
-    Box(Modifier.size(dpSize), contentAlignment = Alignment.Center) {
+    Box(modifier.size(dpSize), contentAlignment = Alignment.Center) {
         Canvas(
             Modifier
                 .fillMaxSize()
@@ -103,15 +108,19 @@ private fun clampToTravel(delta: Offset, travel: Float): Offset {
 
 private fun emitStick(onMoved: (Float, Float) -> Unit, knob: Offset, travel: Float) {
     val x = knob.x / travel
-    val y = -knob.y / travel // screen up = HID Y positive
+    val y = knob.y / travel // Android/HID gamepad convention: screen down = positive Y
     onMoved(applyDeadzone(x), applyDeadzone(y))
 }
 
 /** D-pad: eight hat positions from touch position (cardinals + diagonals), multi-finger safe. */
 @Composable
-fun DPadControl(dpSize: Dp, onHat: (Int) -> Unit) {
+fun DPadControl(
+    dpSize: Dp,
+    onHat: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val zones = remember { mutableStateMapOf<Long, Int>() }
-    Box(Modifier.size(dpSize), contentAlignment = Alignment.Center) {
+    Box(modifier.size(dpSize), contentAlignment = Alignment.Center) {
         Canvas(
             Modifier
                 .fillMaxSize()
@@ -232,10 +241,9 @@ fun GamepadButton(
                             }
                             onDownNow()
                         }
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            if (event.changes.none { it.pressed }) break
-                        }
+                        // This handles both a normal release and Android's cancellation when
+                        // the app backgrounds, so a button cannot remain logically pressed.
+                        waitForUpOrCancellation()
                         pressed = false
                         onUpNow()
                     }

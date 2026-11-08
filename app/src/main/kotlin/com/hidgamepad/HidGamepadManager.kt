@@ -8,6 +8,7 @@ import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import java.util.concurrent.Executor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -16,6 +17,10 @@ import kotlinx.coroutines.flow.StateFlow
  *  report sending (change-triggered + 100 ms heartbeat while connected). All Bluetooth calls
  *  assume the runtime permissions have been granted — MainActivity gates that. */
 class HidGamepadManager(context: Context) {
+
+    private companion object {
+        const val TAG = "HidGamepad"
+    }
 
     sealed interface Status {
         data object Unsupported : Status
@@ -200,7 +205,11 @@ class HidGamepadManager(context: Context) {
         val device = hostDevice ?: return
         val hd = hidDevice ?: return
         try {
-            hd.sendReport(device, 0, report)
+            if (!hd.sendReport(device, 0, report)) {
+                // A stale host connection can keep the status callback alive while the stack
+                // rejects reports; make that condition visible during diagnosis.
+                Log.w(TAG, "Bluetooth stack rejected a HID report")
+            }
         } catch (_: IllegalArgumentException) {
         } catch (_: SecurityException) {
         }
@@ -226,9 +235,17 @@ class HidGamepadManager(context: Context) {
         mainHandler.removeCallbacks(heartbeat)
     }
 
+    /** Immediately release every HID control, including when Android backgrounds the activity. */
+    fun releaseAllInputs() {
+        val neutral = GamepadState().encodeReport()
+        lastReport = neutral
+        sendNow(neutral)
+    }
+
     /** Unregister the HID app and release the profile proxy; safe to call repeatedly. */
     fun stop() {
         stopHeartbeat()
+        releaseAllInputs()
         mainHandler.removeCallbacks(retryProxy)
         mainHandler.removeCallbacks(retryRegister)
         hidDevice?.let { hd ->

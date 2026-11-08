@@ -156,4 +156,9 @@ class MainActivity : ComponentActivity() {
         manager.stop()
         super.onDestroy()
     }
+
+    override fun onPause() {
+        manager.releaseAllInputs()
+        super.onPause()
+    }
 }
