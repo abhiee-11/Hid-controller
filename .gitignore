@@ -1,0 +1,22 @@
+.wrangler/
+.cloudflare/
+
+# Android / Gradle app (hidgamepad)
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+# keystores never committed
+*.jks
+*.keystore
+# build artifacts
+*.apk
+*.aab
+# execution scratch (plan ledger, build logs)
+.superpowers/
+
