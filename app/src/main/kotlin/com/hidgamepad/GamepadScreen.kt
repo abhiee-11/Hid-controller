@@ -56,9 +56,11 @@ fun statusLabel(status: HidGamepadManager.Status): String = when (status) {
     is HidGamepadManager.Status.Unsupported -> "Bluetooth not available on this phone"
     is HidGamepadManager.Status.BluetoothOff -> "Bluetooth is off — turn it on"
     is HidGamepadManager.Status.Unregistered -> "Starting HID service…"
-    is HidGamepadManager.Status.Registered -> "Ready — waiting for the tablet to pair"
+    is HidGamepadManager.Status.Registered -> "Ready — waiting for a host to connect"
     is HidGamepadManager.Status.Connecting -> "Connecting to ${status.deviceName}…"
     is HidGamepadManager.Status.Connected -> "Connected: ${status.deviceName}"
+    is HidGamepadManager.Status.ConnectTimedOut ->
+        "Couldn't reach ${status.deviceName} — open Devices to retry"
 }
 
 private fun deviceLabel(device: BluetoothDevice): String = try {
@@ -122,7 +124,7 @@ fun GamepadScreen(
                     DropdownMenu(expanded = devicesOpen, onDismissRequest = { devicesOpen = false }) {
                         val list = deviceList
                         if (list.isEmpty()) {
-                            DropdownMenuItem(text = { Text("No paired tablets yet") }, onClick = { devicesOpen = false })
+                            DropdownMenuItem(text = { Text("No paired hosts yet") }, onClick = { devicesOpen = false })
                         }
                         for (d in list) {
                             DropdownMenuItem(

@@ -10,6 +10,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -63,6 +64,7 @@ class MainActivity : ComponentActivity() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == BluetoothAdapter.ACTION_STATE_CHANGED) {
                 val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)
+                Log.i("HidGamepad", "Bluetooth adapter state: $state")
                 if (state == BluetoothAdapter.STATE_ON) manager.start()
             }
         }
@@ -149,6 +151,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Returning to the foreground: treat the queried connection list as the truth and
+        // re-register if the stack kept the proxy but dropped the HID app record.
+        manager.onResume()
     }
 
     override fun onDestroy() {
