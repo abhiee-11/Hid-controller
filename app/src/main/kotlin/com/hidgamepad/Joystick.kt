@@ -57,28 +57,38 @@ fun JoystickControl(
                     // size here is the widget's size in pixels (PointerInputScope.size).
                     val radius = size.width / 2f
                     val travel = radius * 0.7f
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        activeId = down.id.value
-                        knob = clampToTravel(down.position - Offset(radius, radius), travel)
-                        emitStick(onMovedNow, knob, travel)
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            var tracked = event.changes.firstOrNull { it.id.value == activeId }
-                            if (tracked == null || !tracked.pressed) {
-                                // Tracked finger lifted: adopt a still-pressed one (two-finger
-                                // handover) so the stick stays live until ALL fingers lift.
-                                val adopt = event.changes.firstOrNull { it.id.value != activeId && it.pressed }
-                                    ?: break
-                                activeId = adopt.id.value
-                                tracked = adopt
-                            }
-                            knob = clampToTravel(tracked.position - Offset(radius, radius), travel)
+                    // Outer finally covers the composable leaving composition; the inner
+                    // finally covers ACTION_UP / ACTION_CANCEL at the end of every gesture.
+                    try {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            activeId = down.id.value
+                            knob = clampToTravel(down.position - Offset(radius, radius), travel)
                             emitStick(onMovedNow, knob, travel)
+                            try {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    var tracked = event.changes.firstOrNull { it.id.value == activeId }
+                                    if (tracked == null || !tracked.pressed) {
+                                        // Tracked finger lifted: adopt a still-pressed one (two-finger
+                                        // handover) so the stick stays live until ALL fingers lift.
+                                        val adopt = event.changes.firstOrNull { it.id.value != activeId && it.pressed }
+                                            ?: break
+                                        activeId = adopt.id.value
+                                        tracked = adopt
+                                    }
+                                    knob = clampToTravel(tracked.position - Offset(radius, radius), travel)
+                                    emitStick(onMovedNow, knob, travel)
+                                }
+                            } finally {
+                                activeId = -1
+                                knob = Offset.Zero
+                                onMovedNow(0f, 0f)
+                            }
                         }
-                        activeId = -1
-                        knob = Offset.Zero
-                        onMovedNow(0f, 0f)
+                    } catch (_: Exception) {
+                        // Gesture handler cancelled (composition left mid-drag); the finally
+                        // above already reported the neutral position.
                     }
                 },
         ) {
@@ -119,6 +129,7 @@ fun DPadControl(
     onHat: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val onHatNow by rememberUpdatedState(onHat)
     val zones = remember { mutableStateMapOf<Long, Int>() }
     Box(modifier.size(dpSize), contentAlignment = Alignment.Center) {
         Canvas(
@@ -126,28 +137,35 @@ fun DPadControl(
                 .fillMaxSize()
                 .pointerInput(Unit) {
                     val half = size.width / 2f
-                    awaitEachGesture {
-                        while (true) {
-                            val event = awaitPointerEvent()
-                            var changed = false
-                            for (c in event.changes) {
-                                if (c.pressed) {
-                                    val zone = hatZone(c.position - Offset(half, half), half)
-                                    if (zone != null) {
-                                        if (zones[c.id.value] != zone) {
-                                            zones[c.id.value] = zone
+                    // The finally runs whenever the gesture ends (UP/CANCEL) or the whole
+                    // handler is torn down, so the D-pad can never stay pressed in the report.
+                    try {
+                        awaitEachGesture {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                var changed = false
+                                for (c in event.changes) {
+                                    if (c.pressed) {
+                                        val zone = hatZone(c.position - Offset(half, half), half)
+                                        if (zone != null) {
+                                            if (zones[c.id.value] != zone) {
+                                                zones[c.id.value] = zone
+                                                changed = true
+                                            }
+                                        } else if (zones.remove(c.id.value) != null) {
+                                            // Finger slid back into the center dead area: release its zone.
                                             changed = true
                                         }
                                     } else if (zones.remove(c.id.value) != null) {
-                                        // Finger slid back into the center dead area: release its zone.
                                         changed = true
                                     }
-                                } else if (zones.remove(c.id.value) != null) {
-                                    changed = true
                                 }
+                                if (changed) onHatNow(combineHats(zones.values))
                             }
-                            if (changed) onHat(combineHats(zones.values))
                         }
+                    } finally {
+                        zones.clear()
+                        onHatNow(GamepadState.HAT_NEUTRAL)
                     }
                 },
         ) {
@@ -233,19 +251,27 @@ fun GamepadButton(
                 .fillMaxSize()
                 .pointerInput(Unit) {
                     awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        if (!pressed) {
-                            pressed = true
-                            if (hapticNow) {
-                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        var wasPressed = false
+                        try {
+                            awaitFirstDown(requireUnconsumed = false)
+                            if (!pressed) {
+                                pressed = true
+                                wasPressed = true
+                                if (hapticNow) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                }
+                                onDownNow()
                             }
-                            onDownNow()
+                            // waitForUpOrCancellation returns on both a normal release and
+                            // Android's cancellation when the app backgrounds, so a same-frame
+                            // press+release can never leave the button logically pressed.
+                            waitForUpOrCancellation()
+                        } finally {
+                            if (wasPressed || pressed) {
+                                pressed = false
+                                onUpNow()
+                            }
                         }
-                        // This handles both a normal release and Android's cancellation when
-                        // the app backgrounds, so a button cannot remain logically pressed.
-                        waitForUpOrCancellation()
-                        pressed = false
-                        onUpNow()
                     }
                 },
         ) {

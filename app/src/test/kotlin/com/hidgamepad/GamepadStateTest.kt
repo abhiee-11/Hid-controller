@@ -81,4 +81,29 @@ class GamepadStateTest {
         assertTrue(hex.contains("9510"))
         assertTrue(hex.contains("75 08".replace(" ", "")))
     }
+
+    @Test
+    fun `same-frame press and release return the exact neutral bytes`() {
+        val pressed = GamepadState(
+            buttons = 1 shl Btn.A,
+            hat = 3,
+            lx = 1f,
+            rt = 0.5f,
+        ).encodeReport()
+        assertFalse(pressed.contentEquals(GamepadState().encodeReport()))
+        // down() then up() on the same control (Cup bit clear) must restore the
+        // byte-identical neutral report — never leave a residual bit.
+        val bit = 1 shl Btn.A
+        val afterRelease = GamepadState(buttons = bit and bit.inv()).encodeReport()
+        assertTrue(afterRelease.contentEquals(GamepadState().encodeReport()))
+    }
+
+    @Test
+    fun `named controls map to distinct button bits`() {
+        val bits = listOf(Btn.A, Btn.B, Btn.X, Btn.Y, Btn.L1, Btn.R1, Btn.SELECT, Btn.START)
+        val masks = bits.map { 1 shl it }
+        assertEquals(bits.size, masks.distinct().size)
+        // each mask must land in the 16-bit button area (bytes 0-1)
+        assertEquals(0, masks.sum() ushr 16)
+    }
 }
