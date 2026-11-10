@@ -76,7 +76,7 @@ the existing frozen descriptor, so nothing re-pairs.
 | Three-finger swipe up / down / left / right | Task View / show desktop / back / forward | Home / nothing / Back / Forward where consumed |
 
 True pinch is not possible over a 5-byte relative mouse report, so "pinch" is Ctrl+wheel on
-both hosts. A 30 ms hold separates each press from its release so a host cannot coalesce
+both hosts. A 40 ms hold separates each press from its release so a host cannot coalesce
 the pair.
 
 ## Project layout

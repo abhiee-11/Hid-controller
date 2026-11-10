@@ -234,4 +234,53 @@ class TouchpadGestureTest {
         r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f), pt(4, 220f, 200f)))
         assertEquals(emptyList<PadAction>(), r.frame(fr(120)))
     }
+
+    @Test
+    fun `two fingers landing in separate frames still tap`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f)))
+        r.frame(fr(20, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        assertEquals(listOf(PadAction.Click(2)), r.frame(fr(140)))
+    }
+
+    @Test
+    fun `three fingers landing in separate frames still tap`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f)))
+        r.frame(fr(20, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        r.frame(fr(40, pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f)))
+        assertEquals(listOf(PadAction.Click(3)), r.frame(fr(160)))
+    }
+
+    @Test
+    fun `three fingers spread wide and landing in separate frames do not swipe`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f)))
+        r.frame(fr(20, pt(1, 100f, 200f), pt(2, 160f, 200f)))
+        r.frame(fr(40, pt(1, 100f, 200f), pt(2, 160f, 200f), pt(3, 220f, 200f)))
+        assertEquals(
+            emptyList<PadAction>(),
+            r.frame(fr(80, pt(1, 100f, 200f), pt(2, 160f, 200f), pt(3, 220f, 200f))),
+        )
+    }
+
+    @Test
+    fun `lifting one finger before the tap emits nothing`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 110f, 200f)))
+        r.frame(fr(50, pt(1, 100f, 200f), pt(2, 110f, 200f)))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(70, pt(1, 100f, 200f))))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(100)))
+    }
+
+    @Test
+    fun `four fingers sliding do not swipe`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f), pt(4, 220f, 200f)))
+        r.frame(fr(50, pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f), pt(4, 220f, 200f)))
+        assertEquals(
+            emptyList<PadAction>(),
+            r.frame(fr(70, pt(1, 40f, 200f), pt(2, 80f, 200f), pt(3, 120f, 200f), pt(4, 160f, 200f))),
+        )
+    }
 }

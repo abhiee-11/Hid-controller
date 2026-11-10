@@ -66,9 +66,24 @@ class TouchpadGestureBridgeTest {
         val r = Recorder()
         val b = r.bridge(HostType.WINDOWS)
         b.dispatch(listOf(PadAction.ZoomStart, PadAction.Zoom(2), PadAction.ZoomEnd))
-        assertEquals(listOf(KeyboardState(MOD_LEFT_CTRL), KeyboardState(0)), r.keyboard)
+        assertEquals(listOf(KeyboardState(MOD_LEFT_CTRL), KeyboardState(MOD_LEFT_CTRL), KeyboardState(0)), r.keyboard)
         assertEquals(listOf(MouseState(buttons = 0, wheel = 2)), r.mouse)
         assertEquals(emptyList<ConsumerState>(), r.consumer)
+    }
+
+    @Test
+    fun `zoom reasserts ctrl on every step`() {
+        val r = Recorder()
+        val b = r.bridge(HostType.WINDOWS)
+        b.dispatch(listOf(PadAction.ZoomStart, PadAction.Zoom(1), PadAction.Zoom(1), PadAction.ZoomEnd))
+        assertEquals(
+            listOf(KeyboardState(MOD_LEFT_CTRL), KeyboardState(MOD_LEFT_CTRL), KeyboardState(MOD_LEFT_CTRL), KeyboardState(0)),
+            r.keyboard,
+        )
+        assertEquals(
+            listOf(MouseState(buttons = 0, wheel = 1), MouseState(buttons = 0, wheel = 1)),
+            r.mouse,
+        )
     }
 
     @Test

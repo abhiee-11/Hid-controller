@@ -28,6 +28,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 /**
@@ -39,6 +40,7 @@ import kotlinx.coroutines.delay
 fun GestureTouchpad(
     sensitivity: Float,
     hostType: HostType,
+    hostConnected: Boolean,
     hapticsEnabled: Boolean,
     hapticsStrength: Float,
     onMouseState: (MouseState) -> Unit,
@@ -55,10 +57,12 @@ fun GestureTouchpad(
     val hapticsStrengthNow by rememberUpdatedState(hapticsStrength)
 
     val handler = remember { Handler(Looper.getMainLooper()) }
-    val recognizer = remember(sensitivity, density) {
+    // One recognizer and one bridge for the pad's whole life: rebuilding them mid-gesture
+    // would drop a held button or a held Ctrl without releasing it.
+    val recognizer = remember(density) {
         TouchpadGestureRecognizer(density = density, sensitivity = sensitivity)
     }
-    val bridge = remember(hostType) {
+    val bridge = remember {
         TouchpadGestureBridge(
             hostType = hostType,
             sendMouse = { mouseNow(it) },
@@ -68,6 +72,8 @@ fun GestureTouchpad(
             hapticClick = { if (hapticsOn) HapticBuzz.buzz(context, hapticsStrengthNow) },
         )
     }
+    LaunchedEffect(sensitivity) { recognizer.sensitivity = sensitivity }
+    LaunchedEffect(hostType) { bridge.hostType = hostType }
 
     // Virtual cursor position, driven by the same deltas the host receives.
     var pointerPosition by remember { mutableStateOf(Offset(-1f, -1f)) }
@@ -80,8 +86,16 @@ fun GestureTouchpad(
         }
     }
 
-    DisposableEffect(Unit) {
+    DisposableEffect(recognizer, bridge) {
         onDispose {
+            bridge.dispatch(recognizer.reset())
+            bridge.releaseAll()
+        }
+    }
+
+    // A host that went away must not inherit a held button or a held Ctrl.
+    LaunchedEffect(hostConnected) {
+        if (!hostConnected) {
             bridge.dispatch(recognizer.reset())
             bridge.releaseAll()
         }
@@ -137,6 +151,8 @@ fun GestureTouchpad(
                             fingerDown = false
                         }
                     }
+                } catch (cancel: CancellationException) {
+                    throw cancel
                 } catch (_: Exception) {
                     fingerDown = false
                 }

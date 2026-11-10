@@ -44,8 +44,10 @@ const val SETTLE_MS = 40L
  */
 class TouchpadGestureRecognizer(
     private val density: Float,
-    private val sensitivity: Float,
+    sensitivity: Float,
 ) {
+    /** Live cursor gain; mutable so a sensitivity slider change never rebuilds the state machine. */
+    var sensitivity: Float = sensitivity
     private enum class Family { ONE, TWO, THREE }
 
     private var active = false
@@ -59,6 +61,10 @@ class TouchpadGestureRecognizer(
     private var lastX = 0f
     private var lastY = 0f
     private var travel = 0f
+    private var swipeDx = 0f
+    private var swipeDy = 0f
+    private val startXById = mutableMapOf<Long, Float>()
+    private val startYById = mutableMapOf<Long, Float>()
     private var bufferedDx = 0f
     private var bufferedDy = 0f
     private var dragClassified = false
@@ -122,6 +128,14 @@ class TouchpadGestureRecognizer(
         lastX = startX
         lastY = startY
         travel = 0f
+        swipeDx = 0f
+        swipeDy = 0f
+        startXById.clear()
+        startYById.clear()
+        for (p in points) {
+            startXById[p.id] = p.x
+            startYById[p.id] = p.y
+        }
         bufferedDx = 0f
         bufferedDy = 0f
         dragClassified = false
@@ -141,7 +155,22 @@ class TouchpadGestureRecognizer(
         }
         val cx = centroidX(points)
         val cy = centroidY(points)
-        travel = hypot(cx - startX, cy - startY)
+        for (p in points) {
+            if (!startXById.containsKey(p.id)) {
+                startXById[p.id] = p.x
+                startYById[p.id] = p.y
+            }
+        }
+        // Travel is the worst displacement of any finger from where that finger landed, so a
+        // finger joining later cannot look like movement of the fingers already down.
+        var worst = 0f
+        for (p in points) {
+            val sx = startXById[p.id] ?: continue
+            val sy = startYById[p.id] ?: continue
+            val d = hypot(p.x - sx, p.y - sy)
+            if (d > worst) worst = d
+        }
+        travel = worst
         if (points.size != lastCount) {
             // A finger joining or leaving is a discontinuity, not user movement.
             lastCount = points.size
@@ -154,6 +183,8 @@ class TouchpadGestureRecognizer(
         val dy = cy - lastY
         lastX = cx
         lastY = cy
+        swipeDx += dx
+        swipeDy += dy
         when (family) {
             Family.ONE -> {
                 bufferedDx += dx
@@ -194,8 +225,8 @@ class TouchpadGestureRecognizer(
                 }
             }
             Family.THREE -> {
-                if (!swipeEmitted && travel > SWIPE_DISTANCE_DP * density) {
-                    out += PadAction.Host(direction(cx - startX, cy - startY))
+                if (maxPoints == 3 && !swipeEmitted && travel > SWIPE_DISTANCE_DP * density) {
+                    out += PadAction.Host(direction(swipeDx, swipeDy))
                     swipeEmitted = true
                     familyLocked = true
                 }
@@ -224,7 +255,9 @@ class TouchpadGestureRecognizer(
             out += PadAction.ZoomEnd
         } else if (dragHeld) {
             out += PadAction.Button(1, false)
-        } else if (nowMs - startMs <= TAP_TIMEOUT_MS && travel <= TAP_SLOP_DP * density) {
+        } else if (lastCount == maxPoints && nowMs - startMs <= TAP_TIMEOUT_MS && travel <= TAP_SLOP_DP * density) {
+            // A tap only fires when every finger that took part lifts together; a finger that
+            // left earlier turned this into a different gesture.
             val button = when (family) {
                 Family.ONE -> if (dragClassified) 0 else 1
                 Family.TWO -> if (scrollClassified) 0 else 2
@@ -259,6 +292,10 @@ class TouchpadGestureRecognizer(
         maxPoints = 0
         lastCount = 0
         travel = 0f
+        swipeDx = 0f
+        swipeDy = 0f
+        startXById.clear()
+        startYById.clear()
         bufferedDx = 0f
         bufferedDy = 0f
         dragClassified = false

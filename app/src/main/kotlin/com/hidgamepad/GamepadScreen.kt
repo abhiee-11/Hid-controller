@@ -394,6 +394,7 @@ fun GamepadScreen(
                     GestureTouchpad(
                         sensitivity = mouseSensitivity,
                         hostType = hostType,
+                        hostConnected = statusText.startsWith("Connected"),
                         hapticsEnabled = hapticsEnabled,
                         hapticsStrength = hapticsStrength,
                         onMouseState = onMouseState,

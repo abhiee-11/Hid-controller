@@ -11,13 +11,16 @@ const val CHORD_HOLD_MS = 40L
  * outer guarantee on teardown and backgrounding.
  */
 class TouchpadGestureBridge(
-    private val hostType: HostType,
+    hostType: HostType,
     private val sendMouse: (MouseState) -> Unit,
     private val sendKeyboard: (KeyboardState) -> Unit,
     private val sendConsumer: (ConsumerState) -> Unit,
     private val schedule: (delayMs: Long, action: () -> Unit) -> Unit,
     private val hapticClick: () -> Unit = {},
 ) {
+    /** Live host type; mutable so a host change never rebuilds the held-button state. */
+    var hostType: HostType = hostType
+
     private var buttons = 0
     private var ctrlHeld = false
 
@@ -35,7 +38,12 @@ class TouchpadGestureBridge(
                 ctrlHeld = true
                 sendKeyboard(KeyboardState(MOD_LEFT_CTRL))
             }
-            is PadAction.Zoom -> sendMouse(MouseState(buttons, 0, 0, action.steps, 0))
+            is PadAction.Zoom -> {
+                // Re-assert Ctrl every step: a pause or a reconnect zeroes the host's keyboard
+                // state, and a wheel without Ctrl is just a scroll.
+                sendKeyboard(KeyboardState(MOD_LEFT_CTRL))
+                sendMouse(MouseState(buttons, 0, 0, action.steps, 0))
+            }
             is PadAction.ZoomEnd -> {
                 ctrlHeld = false
                 sendKeyboard(KeyboardState(0))
