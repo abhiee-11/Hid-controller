@@ -356,7 +356,10 @@ class HidGamepadManager(context: Context) {
             "HID Gamepad",
             "Bluetooth gamepad for host computers",
             "HidGamepad",
-            BluetoothHidDevice.SUBCLASS1_COMBO,
+            // SUBCLASS1_NONE (0x00): let the descriptor speak for itself so Android's
+            // InputReader assigns SOURCE_MOUSE to the mouse collection instead of
+            // collapsing everything under GAMEPAD (which SUBCLASS1_COMBO caused).
+            BluetoothHidDevice.SUBCLASS1_NONE,
             COMBINED_HID_DESCRIPTOR,
         )
         Log.i(TAG, "registerApp requested (attempt ${registerRetryCount + 1})")
