@@ -54,4 +54,35 @@ class TouchpadGestureTest {
         assertEquals(listOf(PadAction.Move(300, -40)), r.frame(fr(16, pt(1, 400f, 60f))))
         assertEquals(emptyList<PadAction>(), r.frame(fr(24)))
     }
+
+    @Test
+    fun `second tap then hold arms a drag button`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 100f)))
+        assertEquals(listOf(PadAction.Click(1)), r.frame(fr(100)))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(150, pt(1, 101f, 100f))))
+        assertEquals(emptyList<PadAction>(), r.tick(300))
+        assertEquals(listOf(PadAction.Button(1, true)), r.tick(400))
+        assertEquals(listOf(PadAction.Move(20, 0)), r.frame(fr(416, pt(1, 121f, 100f))))
+        assertEquals(listOf(PadAction.Button(1, false)), r.frame(fr(500)))
+    }
+
+    @Test
+    fun `second tap released before arming is a normal click`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 100f)))
+        r.frame(fr(90))
+        r.frame(fr(150, pt(1, 101f, 100f)))
+        assertEquals(listOf(PadAction.Click(1)), r.frame(fr(250)))
+    }
+
+    @Test
+    fun `reset releases a held drag button`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 100f)))
+        r.frame(fr(90))
+        r.frame(fr(150, pt(1, 101f, 100f)))
+        assertEquals(listOf(PadAction.Button(1, true)), r.tick(400))
+        assertEquals(listOf(PadAction.Button(1, false)), r.reset())
+    }
 }

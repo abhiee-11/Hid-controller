@@ -61,6 +61,8 @@ class TouchpadGestureRecognizer(
     private var bufferedDx = 0f
     private var bufferedDy = 0f
     private var dragClassified = false
+    private var dragHeld = false
+    private var doubleTapCandidate = false
     private var pendingTapMs: Long? = null
     private var pendingTapX = 0f
     private var pendingTapY = 0f
@@ -77,13 +79,26 @@ class TouchpadGestureRecognizer(
     }
 
     /** Time-only advance, for holds that produce no pointer events. */
-    fun tick(nowMs: Long): List<PadAction> = emptyList()
+    fun tick(nowMs: Long): List<PadAction> {
+        val out = mutableListOf<PadAction>()
+        if (active && !dragHeld && doubleTapCandidate && family == Family.ONE &&
+            nowMs - startMs >= DRAG_ARM_MS && travel <= TAP_SLOP_DP * density
+        ) {
+            out += PadAction.Button(1, true)
+            dragHeld = true
+            dragClassified = true
+            familyLocked = true
+        }
+        return out
+    }
 
     /** Releases whatever a live gesture is holding. Call on teardown. */
     fun reset(): List<PadAction> {
+        val out = mutableListOf<PadAction>()
+        if (dragHeld) out += PadAction.Button(1, false)
         resetGesture()
         pendingTapMs = null
-        return emptyList()
+        return out
     }
 
     private fun start(nowMs: Long, points: List<PadPoint>) {
@@ -101,6 +116,12 @@ class TouchpadGestureRecognizer(
         bufferedDx = 0f
         bufferedDy = 0f
         dragClassified = false
+        dragHeld = false
+        val tapMs = pendingTapMs
+        doubleTapCandidate = tapMs != null &&
+            nowMs - tapMs <= DOUBLE_TAP_WINDOW_MS &&
+            hypot(startX - pendingTapX, startY - pendingTapY) <= TAP_SLOP_DP * density
+        pendingTapMs = null
     }
 
     private fun update(nowMs: Long, points: List<PadPoint>, out: MutableList<PadAction>) {
@@ -138,7 +159,9 @@ class TouchpadGestureRecognizer(
     }
 
     private fun end(nowMs: Long, out: MutableList<PadAction>) {
-        if (!dragClassified && family == Family.ONE && nowMs - startMs <= TAP_TIMEOUT_MS) {
+        if (dragHeld) {
+            out += PadAction.Button(1, false)
+        } else if (!dragClassified && family == Family.ONE && nowMs - startMs <= TAP_TIMEOUT_MS) {
             out += PadAction.Click(1)
             pendingTapMs = nowMs
             pendingTapX = startX
@@ -166,6 +189,8 @@ class TouchpadGestureRecognizer(
         bufferedDx = 0f
         bufferedDy = 0f
         dragClassified = false
+        dragHeld = false
+        doubleTapCandidate = false
     }
 
     private fun familyFor(count: Int): Family = when {
