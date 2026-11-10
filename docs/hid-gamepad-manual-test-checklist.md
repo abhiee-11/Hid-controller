@@ -22,6 +22,27 @@ Host (tablet): any tablet that can pair to a Bluetooth HID gamepad
 - [ ] L2/R2 (buttons top) = analog triggers Rx/Ry: press = 0 → 255 ramp (binary hold = max 255).
 - [ ] 16 buttons: A,B,X,Y, L1,R1, SELECT,START return distinct HID buttons 1,2,3,4,9,10,11,12.
 
+## Mouse gestures (buttonless pad)
+
+The mouse mode has no on-screen buttons. Every gesture below goes out through the frozen
+descriptor, so no re-pairing is involved. Fill the **Result** column during testing.
+
+| Mode | Action | Expected | Result |
+|---|---|---|---|
+| Mouse | Tap once on the pad | Host registers one left click | |
+| Mouse | Two-finger tap | Host registers a right click (Windows: context menu) | |
+| Mouse | Two-finger drag up/down | Content scrolls vertically, natural direction | |
+| Mouse | Two-finger drag left/right | Horizontal pan where the app supports it | |
+| Mouse | Pinch out / pinch in | Ctrl+wheel zoom in the host's zoomable app | |
+| Mouse | Tap, then tap and hold, then drag | Host drags with the left button held; release ends the drag | |
+| Mouse | Three-finger tap | Windows: middle click; Android: usually nothing | |
+| Mouse | Three-finger swipe left / right / up | Windows: back / forward / Task View; Android: Back / Forward / Home | |
+| Mouse | Four-finger tap | Nothing happens | |
+| Mouse | Background the app mid-drag or mid-pinch | Host sees the button and Ctrl released | |
+
+Pinch is Ctrl+wheel on both hosts — a 5-byte relative mouse report cannot express two
+independent contacts. Android right-click, middle-click, and zoom are app-dependent.
+
 ## Haptics toggle
 - [ ] **Haptics ON**: pressing any button buzzes.
 - [ ] **Haptics OFF**: no buzz; setting persists across app restart.

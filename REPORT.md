@@ -167,3 +167,52 @@ Empirical winmm mapping (Windows naming quirk): left stick = X/Y, right stick = 
 - Perform real two-thumb multi-touch and play a game/controller tester on the tablet.
 - Reconnect or re-pair only if needed, then verify every button/axis and that backgrounding clears all host input state.
 - Verify haptic feel and permission-denial/Bluetooth-off interaction on the phone UI.
+
+---
+
+# Report — 2026-11-10
+
+## Touchpad gestures (implemented)
+
+Design: `docs/superpowers/specs/2026-11-10-touchpad-gestures-design.md`
+Plan: `docs/superpowers/plans/2026-11-10-touchpad-gestures.md`
+
+Mouse mode is now a buttonless pad with no on-screen mouse buttons. New files:
+`TouchpadGestures.kt`, `HostGestureMapping.kt`, `TouchpadGestureBridge.kt`,
+`GestureTouchpad.kt`. Deleted from `Joystick.kt` and the mouse panel: `MouseTouchpad`,
+`MouseActionButton`, the three mouse buttons, and the two scroll buttons.
+
+| Check | Result | Evidence |
+|---|---|---|
+| Unit tests | PASS | `gradlew testDebugUnitTest` → 95 tests, 0 failures (2026-11-10 20:24). |
+| Recognizer | PASS | `TouchpadGestureTest` 23 tests: tap/drag/flick, double-tap drag arming, 2-finger scroll + pan + right-click, pinch vs scroll, 3-finger tap/swipe, 4-finger no-click, lift produces no scroll. |
+| Bridge | PASS | `TouchpadGestureBridgeTest` 8 tests: button mask, click press/release, Ctrl held across a pinch, per-host chords, `releaseAll`. |
+| Host mapping | PASS | `HostGestureMappingTest` 2 tests: Windows Win+Tab / Win+D / Alt+Left / Alt+Right; Android 0x0223 / 0x0224 / 0x0225. |
+| Build + install | PASS | `assembleDebug` → `app-debug.apk` 20:24:51; `adb -s <PHONE_SERIAL> install -r` → Success. |
+| Gesture evidence on a host | NOT CAPTURED | No host is paired or connected to the phone. Nothing here claims a gesture works on a real host. |
+| Android-to-Android | NOT VERIFIED | The tablet still does not answer paging; there is still no keyboard-typing or cursor-movement evidence. |
+
+## Windows HID host (blocked, cause identified)
+
+- Windows cached SDP for the phone (`6c40e8eb8fe0`) holds 19 service records and **no HID
+  record (0x1124)**. No `BTHENUM` node for 0x1124 is ever created, so the descriptor is
+  never read. ACL reached `Encryption success`, then `Role change
+  PERIPHERAL status:ROLE_SWITCH_FAILED(0x35)` / `TRANSACTION_RESPONSE_TIMEOUT(0x22)` and
+  `Disconnection initiated … l2cu_no_dynamic_ccbs Idle timer popped`; Windows reconnected
+  as an A2DP sink (`A2DP Stream opened`).
+- User fix: remove the phone under Bluetooth & devices, make the phone discoverable while
+  the app is registered, then pair again. Documented in the README.
+- Cache key inspected: `HKLM:\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Devices\6c40e8eb8fe0\CachedServices`.
+
+## Corrections to earlier handoff notes
+
+- Tablet HID enumeration **does** exist in this report (gamepad input node at
+  `/dev/input/event6`); the earlier claim that it did not was wrong.
+- The working tree was 10 modified + 9 untracked, not clean.
+- Stored `controller_mode` is `GAMEPAD`, not mouse.
+
+## Commits (local only, never pushed)
+
+`0f36c05`, `22649fb`, `d5a3b44`, `7b8da8e`, `b5c7c12`, `ed71c88`, `81da7b3`, `5169867`
+on branch `feat/touchpad-gestures`.
+
