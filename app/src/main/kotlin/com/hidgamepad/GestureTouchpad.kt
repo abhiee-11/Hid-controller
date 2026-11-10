@@ -119,13 +119,19 @@ fun GestureTouchpad(
             Modifier.fillMaxSize().pointerInput(Unit) {
                 try {
                     awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        down.consume()
                         fingerDown = true
                         val surfaceWidth = size.width.toFloat()
                         val surfaceHeight = size.height.toFloat()
                         if (pointerPosition.x < 0f) {
                             pointerPosition = Offset(surfaceWidth / 2f, surfaceHeight / 2f)
                         }
+                        val initialFrame = PadFrame(
+                            timeMs = SystemClock.uptimeMillis(),
+                            points = listOf(PadPoint(down.id.value, down.position.x, down.position.y)),
+                        )
+                        bridge.dispatch(recognizer.frame(initialFrame))
                         try {
                             while (true) {
                                 val event = awaitPointerEvent()
