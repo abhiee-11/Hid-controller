@@ -8,6 +8,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
@@ -40,7 +41,7 @@ import androidx.core.view.WindowInsetsControllerCompat
 private val REQUIRED_PERMISSIONS = arrayOf(
     Manifest.permission.BLUETOOTH_CONNECT,
     Manifest.permission.BLUETOOTH_ADVERTISE,
-    Manifest.permission.BLUETOOTH_SCAN,
+    Manifest.permission.POST_NOTIFICATIONS,
 )
 
 /** Fullscreen landscape gamepad; owns the manager lifecycle and permission flow. */
@@ -48,13 +49,14 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var manager: HidGamepadManager
     private var hapticsOn by mutableStateOf(true)
+    private var hapticsStrength by mutableStateOf(1.0f)
     private var permissionsGranted by mutableStateOf(false)
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
             val granted = grants.values.all { it }
             permissionsGranted = granted
-            if (granted) manager.start()
+            if (granted) ensureHidService()
         }
 
     private val discoverableLauncher =
@@ -65,11 +67,26 @@ class MainActivity : ComponentActivity() {
             if (intent.action == BluetoothAdapter.ACTION_STATE_CHANGED) {
                 val state = intent.getIntExtra(BluetoothAdapter.EXTRA_STATE, -1)
                 Log.i("HidGamepad", "Bluetooth adapter state: $state")
-                if (state == BluetoothAdapter.STATE_ON) manager.start()
+                if (state == BluetoothAdapter.STATE_ON) ensureHidService()
             }
         }
     }
     private var receiverRegistered = false
+
+    private fun ensureHidService() {
+        Log.i("HidGamepad", "activity: ensureHidService")
+        manager = HidRuntime.get(this)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(Intent(this, HidControllerService::class.java))
+        } else {
+            startService(Intent(this, HidControllerService::class.java))
+        }
+        manager.start()
+    }
+
+    private fun hasRequiredPermissions(): Boolean = REQUIRED_PERMISSIONS.all {
+        ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -81,8 +98,9 @@ class MainActivity : ComponentActivity() {
             WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        manager = HidGamepadManager(this)
+        manager = HidRuntime.get(this)
         hapticsOn = getSharedPreferences("hid_gamepad", MODE_PRIVATE).getBoolean("haptics_on", true)
+        hapticsStrength = getSharedPreferences("hid_gamepad", MODE_PRIVATE).getFloat("haptics_strength", 1.0f)
 
         registerReceiver(bluetoothReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
         receiverRegistered = true
@@ -92,7 +110,7 @@ class MainActivity : ComponentActivity() {
         }
         if (missing.isEmpty()) {
             permissionsGranted = true
-            manager.start()
+            ensureHidService()
         } else {
             permissionLauncher.launch(REQUIRED_PERMISSIONS)
         }
@@ -116,12 +134,22 @@ class MainActivity : ComponentActivity() {
                             )
                         },
                         hapticsEnabled = hapticsOn,
+                        hapticsStrength = hapticsStrength,
                         onHapticsChange = { enabled ->
                             hapticsOn = enabled
                             getSharedPreferences("hid_gamepad", MODE_PRIVATE)
                                 .edit().putBoolean("haptics_on", enabled).apply()
                         },
-                        onState = { state -> manager.update(state) },
+                        onHapticsStrengthChange = { strength ->
+                            hapticsStrength = strength
+                            getSharedPreferences("hid_gamepad", MODE_PRIVATE)
+                                .edit().putFloat("haptics_strength", strength).apply()
+                        },
+                        onGamepadState = { state -> manager.updateGamepad(state) },
+                        onKeyboardState = { state -> manager.updateKeyboard(state) },
+                        onMouseState = { state -> manager.sendMouse(state) },
+                        onConsumerState = { state -> manager.sendConsumer(state) },
+                        onReleaseAllInputs = { manager.releaseAllInputs() },
                     )
                 } else {
                     Column(
@@ -155,14 +183,18 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Returning to the foreground: treat the queried connection list as the truth and
-        // re-register if the stack kept the proxy but dropped the HID app record.
+        val granted = hasRequiredPermissions()
+        if (granted != permissionsGranted) permissionsGranted = granted
+        if (!granted) {
+            Log.i("HidGamepad", "activity: onResume without Bluetooth permissions — not starting HID")
+            return
+        }
+        ensureHidService()
         manager.onResume()
     }
 
     override fun onDestroy() {
         if (receiverRegistered) unregisterReceiver(bluetoothReceiver)
-        manager.stop()
         super.onDestroy()
     }
 

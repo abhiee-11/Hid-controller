@@ -5,7 +5,10 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,19 +20,21 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.atan2
 import kotlin.math.hypot
+import kotlin.math.roundToInt
 
 // Shared palette for the on-screen controls.
 val TrackRing = Color(0xFF343640)
@@ -229,22 +234,117 @@ private fun combineHats(values: Collection<Int>): Int = when {
     }
 }
 
-/** Circular press-and-hold button: reports press/release with instantaneous visual state. */
+/**
+ * Analog slide pedal (L2 / R2): a vertical strip whose value is set by how far the
+ * finger has travelled along it — top = released (0), bottom = full press (1) — with a
+ * smooth linear ramp between [PEDAL_RAMP_START] and [PEDAL_RAMP_END] of the strip so the
+ * very edges feel like a physical trigger's dead travel. The value returns to 0 on
+ * release, touch cancel, or the widget leaving composition. Each pressed pointer is
+ * tracked individually (multi-touch safe) and the pedals use [combinePedal] semantics:
+ * the deepest pressed finger wins, and other on-screen controls are untouched.
+ */
+const val PEDAL_RAMP_START = 0.1f
+const val PEDAL_RAMP_END = 0.9f
+
+/** Normalised position along the pedal track (0 = top/released, 1 = bottom/full) -> 0..1. */
+fun pedalValue(yNorm: Float): Float {
+    val y = yNorm.coerceIn(0f, 1f)
+    if (y <= PEDAL_RAMP_START) return 0f
+    if (y >= PEDAL_RAMP_END) return 1f
+    return (y - PEDAL_RAMP_START) / (PEDAL_RAMP_END - PEDAL_RAMP_START)
+}
+
+/** One pressed finger's value per pointer; the combined pedal value is the deepest of them. */
+fun combinePedal(values: Collection<Float>): Float = values.maxOrNull() ?: 0f
+
+@Composable
+fun PedalControl(
+    label: String,
+    width: Dp,
+    height: Dp,
+    onValue: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val onValueNow by rememberUpdatedState(onValue)
+    val values = remember { mutableStateMapOf<Long, Float>() }
+    Box(modifier.size(width, height).padding(horizontal = 1.dp)) {
+        Canvas(
+            Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    // The outer finally handles widget teardown mid-gesture; the trim-drop
+                    // inside the loop handles fingers lifting or sliding off the track.
+                    try {
+                        awaitEachGesture {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                var changed = false
+                                for (c in event.changes) {
+                                    if (c.pressed) {
+                                        // Guard against a zero-height first layout frame.
+                                        val track = size.height.coerceAtLeast(1).toFloat()
+                                        val v = pedalValue(c.position.y / track)
+                                        if (values[c.id.value] != v) {
+                                            values[c.id.value] = v
+                                            changed = true
+                                        }
+                                    } else if (values.remove(c.id.value) != null) {
+                                        changed = true
+                                    }
+                                }
+                                if (changed) onValueNow(combinePedal(values.values))
+                            }
+                        }
+                    } finally {
+                        values.clear()
+                        onValueNow(0f)
+                    }
+                },
+        ) {
+            val corner = size.width / 6f
+            drawRoundRect(TrackRing, cornerRadius = CornerRadius(corner, corner))
+            val fill = combinePedal(values.values)
+            if (fill > 0.01f) {
+                val fillH = (size.height - 8f) * fill
+                drawRoundRect(
+                    DpadHeld.copy(alpha = 0.85f),
+                    topLeft = Offset(2f, size.height - 4f - fillH),
+                    size = Size(size.width - 4f, fillH),
+                    cornerRadius = CornerRadius(corner * 0.7f, corner * 0.7f),
+                )
+            }
+        }
+        Text(
+            label,
+            color = Color.White,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.align(Alignment.Center),
+        )
+    }
+}
+
+/**
+ * Circular press-and-hold button: reports press/release with instantaneous visual state.
+ * [hapticsStrength] scales the press buzz (0.25 = less .. 1.5 = more, per HapticBuzz).
+ */
 @Composable
 fun GamepadButton(
     label: String,
     dpSize: Dp,
     color: Color,
     hapticsEnabled: Boolean,
+    hapticsStrength: Float,
     onDown: () -> Unit,
     onUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var pressed by remember { mutableStateOf(false) }
-    val haptics = LocalHapticFeedback.current
+    val context = LocalContext.current
     val onDownNow by rememberUpdatedState(onDown)
     val onUpNow by rememberUpdatedState(onUp)
     val hapticNow by rememberUpdatedState(hapticsEnabled)
+    val strengthNow by rememberUpdatedState(hapticsStrength)
     Box(modifier.size(dpSize), contentAlignment = Alignment.Center) {
         Canvas(
             Modifier
@@ -258,7 +358,7 @@ fun GamepadButton(
                                 pressed = true
                                 wasPressed = true
                                 if (hapticNow) {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    HapticBuzz.buzz(context, strengthNow)
                                 }
                                 onDownNow()
                             }
@@ -279,5 +379,56 @@ fun GamepadButton(
             drawCircle(color, radius = size.width / 5f, style = Stroke(width = 3f))
         }
         Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/** Rectangular keyboard press target with a clear held state. */
+@Composable
+fun KeyboardKeyButton(
+    label: String,
+    active: Boolean,
+    hapticsEnabled: Boolean,
+    hapticsStrength: Float,
+    onDown: () -> Unit,
+    onUp: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var pressed by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val onDownNow by rememberUpdatedState(onDown)
+    val onUpNow by rememberUpdatedState(onUp)
+    val hapticNow by rememberUpdatedState(hapticsEnabled)
+    val strengthNow by rememberUpdatedState(hapticsStrength)
+    Box(modifier.fillMaxHeight(), contentAlignment = Alignment.Center) {
+        Canvas(
+            Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        var wasPressed = false
+                        try {
+                            awaitFirstDown(requireUnconsumed = false)
+                            if (!pressed) {
+                                pressed = true
+                                wasPressed = true
+                                if (hapticNow) HapticBuzz.buzz(context, strengthNow)
+                                onDownNow()
+                            }
+                            waitForUpOrCancellation()
+                        } finally {
+                            if (wasPressed || pressed) {
+                                pressed = false
+                                onUpNow()
+                            }
+                        }
+                    }
+                },
+        ) {
+            drawRoundRect(
+                if (active || pressed) DpadHeld else TrackRing,
+                cornerRadius = CornerRadius(10f, 10f),
+            )
+        }
+        Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
