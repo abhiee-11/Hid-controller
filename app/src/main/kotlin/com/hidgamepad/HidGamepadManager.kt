@@ -13,6 +13,26 @@ import java.util.concurrent.Executor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
+enum class RegisterRetryDecision { WaitForStatusCallback, ScheduleRetry }
+
+/** The stack can reject registration by returning false instead of throwing. Treat both as
+ * the same retryable failure; a true result means onAppStatusChanged will report the state. */
+fun registerRetryDecision(accepted: Boolean): RegisterRetryDecision =
+    if (accepted) RegisterRetryDecision.WaitForStatusCallback else RegisterRetryDecision.ScheduleRetry
+
+/** Host replacement must not carry a held input into a new host. True when a different host
+ * address becomes active after another host was already active. */
+fun hostReplacementNeedsNeutral(wasHostAddress: String?, liveHostAddress: String): Boolean =
+    wasHostAddress != null && wasHostAddress != liveHostAddress
+
+/** Report delivery is gated on the platform's authoritative per-device connection state. */
+fun hostConnectionUsable(connectionState: Int): Boolean =
+    connectionState == BluetoothProfile.STATE_CONNECTED
+
+/** A plugged-device callback is only trustworthy when the same device reports CONNECTED. */
+fun shouldAdoptPluggedDevice(registered: Boolean, connectionState: Int): Boolean =
+    registered && hostConnectionUsable(connectionState)
+
 /** Bluetooth HID DEVICE profile wrapper: app registration, host connection lifecycle and
  *  report sending (change-triggered + 100 ms heartbeat while connected). All Bluetooth calls
  *  assume the runtime permissions have been granted — MainActivity gates that. */
@@ -29,6 +49,7 @@ class HidGamepadManager(context: Context) {
         data object Registered : Status
         data class Connecting(val deviceName: String) : Status
         data class Connected(val deviceName: String) : Status
+        data class ConnectFailed(val deviceName: String) : Status
         /** connect() was accepted but no HID connection materialised within 10 s. */
         data class ConnectTimedOut(val deviceName: String) : Status
     }
@@ -51,12 +72,19 @@ class HidGamepadManager(context: Context) {
 
     private var hidDevice: BluetoothHidDevice? = null
     private var appRegistered = false
+
+    /** True between the stack accepting registerApp() and its status callback arriving.
+     * Without this, a second start() re-registers while the first attempt is still in flight;
+     * the stack rejects the duplicate and schedules a spurious retry. */
+    private var registerInFlight = false
     private var proxyPending = false
     private var hostDevice: BluetoothDevice? = null
-    private var lastReport: ByteArray? = null
+    private var lastGamepadReport: ByteArray? = null
+    private var lastKeyboardReport: ByteArray? = null
     private var registerRetryCount = 0
     private var connectTimeoutTarget: String? = null
     private var reportsSent = 0
+    private var lastDeliveryDropLogAt = 0L
 
     fun bluetoothEnabled(): Boolean = adapter?.isEnabled == true
 
@@ -72,18 +100,34 @@ class HidGamepadManager(context: Context) {
         device.address
     }
 
+    /** Authoritative per-device state; -1 when the proxy or permission is unavailable. */
+    private fun connectionStateOf(device: BluetoothDevice): Int = try {
+        hidDevice?.getConnectionState(device) ?: -1
+    } catch (_: SecurityException) {
+        -1
+    }
+
     /** Fetch the HID DEVICE proxy, then register the app (SDP record + descriptor). */
     fun start() {
         val a = adapter ?: run {
+            Log.w(TAG, "start(): no Bluetooth adapter — HID device unsupported")
             _status.value = Status.Unsupported
             return
         }
         if (!a.isEnabled) {
+            Log.i(TAG, "start(): Bluetooth is off — registration deferred until it turns on")
             _status.value = Status.BluetoothOff
             return
         }
-        if (proxyPending || hidDevice != null) {
+        if (hidDevice != null) {
+            Log.i(TAG, "start(): proxy already up (registered=$appRegistered)")
+            if (!appRegistered) registerApp()
             refreshConnected("start: proxy already up")
+            return
+        }
+        if (proxyPending) {
+            Log.i(TAG, "start(): proxy fetch already pending")
+            refreshConnected("start: proxy pending")
             return
         }
         Log.i(TAG, "start(): fetching HID DEVICE proxy")
@@ -92,6 +136,7 @@ class HidGamepadManager(context: Context) {
         try {
             a.getProfileProxy(appContext, serviceListener, BluetoothProfile.HID_DEVICE)
         } catch (_: SecurityException) {
+            Log.w(TAG, "start(): getProfileProxy denied — check BLUETOOTH_CONNECT")
             proxyPending = false
         }
         // Some stacks never invoke the listener; retry the proxy fetch once in a while.
@@ -126,14 +171,46 @@ class HidGamepadManager(context: Context) {
             Log.i(TAG, "HID_DEVICE service disconnected")
             hidDevice = null
             appRegistered = false
+            registerInFlight = false
             hostDevice = null
-            lastReport = null
+            lastGamepadReport = null
+            lastKeyboardReport = null
             stopHeartbeat()
             stopConnectionPoll()
             _status.value = if (bluetoothEnabled()) Status.Unregistered else Status.BluetoothOff
             // Self-heal: if Bluetooth is still on but the proxy died silently, fetch it again.
             if (bluetoothEnabled()) mainHandler.postDelayed({ start() }, RETRY_MS)
         }
+    }
+
+    private fun setActiveHost(live: BluetoothDevice) {
+        val wasHost = hostDevice
+        val replacing = hostReplacementNeedsNeutral(wasHost?.address, live.address)
+        hostDevice = live
+        Log.i(
+            TAG,
+            "active host: ${deviceName(live)}/${live.address} connState=${connectionStateOf(live)}",
+        )
+        if (replacing) {
+            releaseAllInputs()
+        }
+        emptyTruthChecks = 0
+        _status.value = Status.Connected(deviceName(live))
+        startHeartbeat()
+        cancelConnectTimeout()
+    }
+
+    private fun clearNoLiveHost() {
+        if (hostDevice != null) {
+            Log.i(TAG, "clearing active host and releasing inputs")
+            releaseAllInputs()
+        }
+        stopHeartbeat()
+        cancelConnectTimeout()
+        hostDevice = null
+        lastGamepadReport = null
+        lastKeyboardReport = null
+        _status.value = if (appRegistered) Status.Registered else Status.Unregistered
     }
 
     /** In BluetoothHidDevice the getConnectedDevices() list is the authoritative host state:
@@ -152,14 +229,7 @@ class HidGamepadManager(context: Context) {
         Log.i(TAG, "connected devices ($reason): [${list.joinToString { deviceName(it) }}]")
         val live = list.firstOrNull()
         if (live != null) {
-            val wasHost = hostDevice
-            hostDevice = live
-            emptyTruthChecks = 0
-            if (_status.value != Status.Connected(deviceName(live)) || wasHost != live) {
-                _status.value = Status.Connected(deviceName(live))
-            }
-            startHeartbeat()
-            cancelConnectTimeout()
+            setActiveHost(live)
         } else {
             // The stack's list can lag behind a just-arrived connection for under a second,
             // so a clear requires two empties spaced at least 1s apart.
@@ -172,10 +242,7 @@ class HidGamepadManager(context: Context) {
                     Log.i(TAG, "connected list empty (waiting for confirmation): keeping host")
                 } else {
                     Log.i(TAG, "connected list empty twice: clearing stale host")
-                    hostDevice = null
-                    lastReport = null
-                    stopHeartbeat()
-                    _status.value = if (appRegistered) Status.Registered else Status.Unregistered
+                    clearNoLiveHost()
                 }
             }
         }
@@ -204,26 +271,37 @@ class HidGamepadManager(context: Context) {
     private val hidCallback = object : BluetoothHidDevice.Callback() {
         override fun onAppStatusChanged(pluggedDevice: BluetoothDevice?, registered: Boolean) {
             Log.i(TAG, "onAppStatusChanged registered=$registered plugged=${pluggedDevice?.let { deviceName(it) }}")
+            registerInFlight = false
             appRegistered = registered
             if (registered) {
                 registerRetryCount = 0
                 mainHandler.removeCallbacks(retryRegister)
                 if (pluggedDevice != null) {
-                    // SDP reports the plugged host immediately; the queryable list can lag
-                    // behind, so trust this signal first and let refreshConnected confirm.
-                    hostDevice = pluggedDevice
-                    _status.value = Status.Connected(deviceName(pluggedDevice))
-                    startHeartbeat()
-                    cancelConnectTimeout()
+                    // The SDP callback can carry a stale "last plugged" device even when the
+                    // link is down. Only adopt it when the authoritative state agrees.
+                    val connState = connectionStateOf(pluggedDevice)
+                    if (shouldAdoptPluggedDevice(registered, connState)) {
+                        setActiveHost(pluggedDevice)
+                    } else {
+                        Log.i(
+                            TAG,
+                            "ignoring plugged=${deviceName(pluggedDevice)} connState=$connState " +
+                                "(not an authoritative CONNECTED)",
+                        )
+                        refreshConnected("app registered, plugged not connected")
+                    }
+                } else {
+                    refreshConnected("app registered")
                 }
-                refreshConnected("app registered")
                 if (hostDevice == null && _status.value !is Status.Connected) {
                     _status.value = Status.Registered
                 }
                 startConnectionPoll()
             } else {
+                if (hostDevice != null) releaseAllInputs()
                 hostDevice = null
-                lastReport = null
+                lastGamepadReport = null
+                lastKeyboardReport = null
                 stopHeartbeat()
                 stopConnectionPoll()
                 _status.value = Status.Unregistered
@@ -238,19 +316,25 @@ class HidGamepadManager(context: Context) {
             when (state) {
                 BluetoothProfile.STATE_CONNECTED -> refreshConnected("state connected")
                 BluetoothProfile.STATE_CONNECTING -> {
-                    hostDevice = device
+                    Log.i(TAG, "connecting to ${deviceName(device)}; awaiting CONNECTED before sending")
                     if (_status.value !is Status.Connected && _status.value !is Status.Connecting) {
                         _status.value = Status.Connecting(deviceName(device))
                     }
                 }
                 BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_DISCONNECTING -> {
-                    // Query first: only clear the host when the truth is that nobody is connected.
-                    refreshConnected("state disconnected")
-                    if (_status.value !is Status.Connected) {
-                        hostDevice = null
-                        lastReport = null
-                        stopHeartbeat()
-                        _status.value = if (appRegistered) Status.Registered else Status.Unregistered
+                    if (hostDevice != null && device.address != hostDevice?.address) {
+                        Log.i(TAG, "ignoring disconnect for non-active host ${deviceName(device)}")
+                    } else {
+                        val other = try {
+                            hidDevice?.getConnectedDevices()?.firstOrNull { it.address != device.address }
+                        } catch (_: SecurityException) {
+                            null
+                        }
+                        if (other != null) {
+                            setActiveHost(other)
+                        } else {
+                            clearNoLiveHost()
+                        }
                     }
                 }
             }
@@ -267,24 +351,29 @@ class HidGamepadManager(context: Context) {
 
     fun registerApp() {
         val hd = hidDevice ?: return
-        if (appRegistered || proxyPending) return
+        if (appRegistered || proxyPending || registerInFlight) return
         val sdp = BluetoothHidDeviceAppSdpSettings(
             "HID Gamepad",
             "Bluetooth gamepad for host computers",
             "HidGamepad",
             BluetoothHidDevice.SUBCLASS1_COMBO,
-            GAMEPAD_DESCRIPTOR,
+            COMBINED_HID_DESCRIPTOR,
         )
         Log.i(TAG, "registerApp requested (attempt ${registerRetryCount + 1})")
-        try {
+        registerInFlight = true
+        val accepted: Boolean = try {
             // API 28+ signature: QoS settings optional (pass null for defaults).
             hd.registerApp(sdp, null, null, executor, hidCallback)
         } catch (_: SecurityException) {
             Log.w(TAG, "registerApp failed: SecurityException")
-            _status.value = Status.Unregistered
-            scheduleRegisterRetry()
+            false
         } catch (_: IllegalStateException) {
             Log.w(TAG, "registerApp failed: IllegalStateException")
+            false
+        }
+        if (registerRetryDecision(accepted) == RegisterRetryDecision.ScheduleRetry) {
+            Log.w(TAG, "registerApp rejected: scheduled retry")
+            registerInFlight = false
             _status.value = Status.Unregistered
             scheduleRegisterRetry()
         }
@@ -300,8 +389,13 @@ class HidGamepadManager(context: Context) {
     }
 
     fun connect(device: BluetoothDevice): Boolean {
-        val hd = hidDevice ?: return false
-        if (!appRegistered) return false
+        val name = deviceName(device)
+        val hd = hidDevice
+        if (hd == null || !appRegistered) {
+            cancelConnectTimeout()
+            _status.value = Status.ConnectFailed(name)
+            return false
+        }
         val ok = try {
             hd.connect(device)
         } catch (_: SecurityException) {
@@ -309,12 +403,15 @@ class HidGamepadManager(context: Context) {
         } catch (_: IllegalStateException) {
             false
         }
-        Log.i(TAG, "connect(${deviceName(device)}) -> $ok")
+        Log.i(TAG, "connect($name) -> $ok")
         if (ok) {
-            _status.value = Status.Connecting(deviceName(device))
-            connectTimeoutTarget = deviceName(device)
+            _status.value = Status.Connecting(name)
+            connectTimeoutTarget = name
             mainHandler.removeCallbacks(connectTimeout)
             mainHandler.postDelayed(connectTimeout, CONNECT_TIMEOUT_MS)
+        } else {
+            cancelConnectTimeout()
+            _status.value = Status.ConnectFailed(name)
         }
         return ok
     }
@@ -329,8 +426,10 @@ class HidGamepadManager(context: Context) {
             refreshConnected("connect timeout")
             if (_status.value !is Status.Connected && name != null) {
                 Log.w(TAG, "connect to $name timed out")
+                if (hostDevice != null) releaseAllInputs()
                 hostDevice = null
-                lastReport = null
+                lastGamepadReport = null
+                lastKeyboardReport = null
                 _status.value = if (appRegistered) Status.ConnectTimedOut(name) else Status.Unregistered
             }
         }
@@ -355,35 +454,109 @@ class HidGamepadManager(context: Context) {
         refreshConnected("onResume")
     }
 
-    /** Push a fresh snapshot; sends only when the report actually changed. */
-    fun update(state: GamepadState) {
+    /** Push a fresh gamepad snapshot; sends only when the report actually changed. */
+    fun updateGamepad(state: GamepadState) {
         if (hostDevice == null) return
         val report = state.encodeReport()
-        if (lastReport?.contentEquals(report) == true) return
-        lastReport = report
-        sendNow(report)
+        if (lastGamepadReport?.contentEquals(report) == true) return
+        lastGamepadReport = report
+        sendReportNow(GAMEPAD_REPORT_ID, report)
     }
 
-    private fun sendNow(report: ByteArray) {
-        val device = hostDevice ?: return
-        val hd = hidDevice ?: return
+    /** Backwards-compatible alias for the gamepad-only push path. */
+    fun update(state: GamepadState) = updateGamepad(state)
+
+    fun updateKeyboard(state: KeyboardState) {
+        if (hostDevice == null) return
+        val report = state.encodeReport()
+        if (lastKeyboardReport?.contentEquals(report) == true) return
+        lastKeyboardReport = report
+        sendReportNow(KEYBOARD_REPORT_ID, report)
+    }
+
+    fun sendMouse(state: MouseState) {
+        if (hostDevice == null) return
+        val split = state.splitIntoReports()
+        for ((index, report) in split.withIndex()) {
+            logMouseSend(
+                index = index,
+                total = split.size,
+                sourceState = state,
+                chunk = report,
+            )
+            sendReportNow(MOUSE_REPORT_ID, report.encodeReport())
+        }
+    }
+
+    private fun runtimeTargetSummary(): String {
+        val hd = hidDevice
+        val host = hostDevice
+        return "registered=$appRegistered host=${host?.let { deviceName(it) + "/" + it.address }} hidDevice=${hd != null} connState=${host?.let { hd?.getConnectionState(it) } ?: -1}"
+    }
+
+    private fun logMouseSend(index: Int, total: Int, sourceState: MouseState, chunk: MouseState) {
+        val host = hostDevice
+        val payload = chunk.encodeReport()
+        val payloadHex = payload.joinToString(" ") { "%02X".format(it) }
+        val splitDescription = if (total > 1) " chunk ${index + 1}/$total of source dx=${sourceState.dx} dy=${sourceState.dy}" else ""
+        Log.i(
+            TAG,
+            "MOUSE REPORT id=$MOUSE_REPORT_ID payload=[$payloadHex] length=${payload.size} " +
+                "target=${runtimeTargetSummary()}$splitDescription",
+        )
+    }
+
+    private fun sendReportNow(reportId: Int, payload: ByteArray) {
+        val device = hostDevice ?: run {
+            Log.w(TAG, "sendReportNow id=$reportId dropped: no connected host; target=${runtimeTargetSummary()}")
+            return
+        }
+        val hd = hidDevice ?: run {
+            Log.w(TAG, "sendReportNow id=$reportId dropped: no HID device proxy; host=${deviceName(device)}")
+            return
+        }
+        // sendReport() returning true only means the stack accepted the write. Gate on the
+        // authoritative connection state so a stale host reference cannot stream reports.
+        val connState = connectionStateOf(device)
+        if (!hostConnectionUsable(connState)) {
+            val now = System.currentTimeMillis()
+            if (now - lastDeliveryDropLogAt >= 1_000) {
+                lastDeliveryDropLogAt = now
+                Log.w(
+                    TAG,
+                    "sendReportNow id=$reportId dropped: host not connected connState=$connState " +
+                        "target=${runtimeTargetSummary()}",
+                )
+            }
+            return
+        }
         try {
-            if (hd.sendReport(device, 0, report)) {
+            val payloadHex = payload.joinToString(" ") { "%02X".format(it) }
+            val accepted = hd.sendReport(device, reportId, payload)
+            Log.i(
+                TAG,
+                "sendReport id=$reportId payload=[$payloadHex] length=${payload.size} " +
+                    "target=${runtimeTargetSummary()} acceptedByAndroid=$accepted",
+            )
+            if (accepted) {
                 reportsSent++
                 if (reportsSent % 100 == 0) Log.i(TAG, "reports sent: $reportsSent")
             } else {
                 // A stale host connection can keep the status callback alive while the stack
                 // rejects reports; make that condition visible during diagnosis.
-                Log.w(TAG, "Bluetooth stack rejected a HID report")
+                Log.w(TAG, "Bluetooth stack rejected a HID report (id=$reportId, target=${runtimeTargetSummary()})")
             }
         } catch (_: IllegalArgumentException) {
+            Log.w(TAG, "sendReport id=$reportId failed: IllegalArgumentException target=${runtimeTargetSummary()}")
         } catch (_: SecurityException) {
+            Log.w(TAG, "sendReport id=$reportId failed: SecurityException target=${runtimeTargetSummary()}")
         }
     }
 
     private val heartbeat = object : Runnable {
         override fun run() {
-            lastReport?.let(::sendNow)
+            // Heartbeat is gamepad-only; relative mouse movement must never be repeated here.
+            lastGamepadReport?.let { sendReportNow(GAMEPAD_REPORT_ID, it) }
             mainHandler.postDelayed(this, 100)
         }
     }
@@ -391,8 +564,9 @@ class HidGamepadManager(context: Context) {
     private fun startHeartbeat() {
         // Seed the neutral report so the host starts receiving a heartbeat right away,
         // even before the first input happens.
-        if (lastReport == null) lastReport = GamepadState().encodeReport()
-        lastReport?.let(::sendNow)
+        if (lastGamepadReport == null) lastGamepadReport = GamepadState().encodeReport()
+        if (lastKeyboardReport == null) lastKeyboardReport = KeyboardState().encodeReport()
+        lastGamepadReport?.let { sendReportNow(GAMEPAD_REPORT_ID, it) }
         mainHandler.removeCallbacks(heartbeat)
         mainHandler.postDelayed(heartbeat, 100)
     }
@@ -401,11 +575,23 @@ class HidGamepadManager(context: Context) {
         mainHandler.removeCallbacks(heartbeat)
     }
 
+    fun sendConsumer(state: ConsumerState) {
+        if (hostDevice == null) return
+        sendReportNow(CONSUMER_REPORT_ID, state.encodeReport())
+    }
+
     /** Immediately release every HID control, including when Android backgrounds the activity. */
     fun releaseAllInputs() {
-        val neutral = GamepadState().encodeReport()
-        lastReport = neutral
-        sendNow(neutral)
+        val keyboard = KeyboardState().encodeReport()
+        val mouse = MouseState().encodeReport()
+        val gamepad = GamepadState().encodeReport()
+        val consumer = ConsumerState().encodeReport()
+        sendReportNow(KEYBOARD_REPORT_ID, keyboard)
+        sendReportNow(MOUSE_REPORT_ID, mouse)
+        sendReportNow(GAMEPAD_REPORT_ID, gamepad)
+        sendReportNow(CONSUMER_REPORT_ID, consumer)
+        lastGamepadReport = gamepad
+        lastKeyboardReport = keyboard
     }
 
     /** Unregister the HID app and release the profile proxy; safe to call repeatedly. */
@@ -428,8 +614,10 @@ class HidGamepadManager(context: Context) {
         }
         hidDevice = null
         appRegistered = false
+        registerInFlight = false
         hostDevice = null
-        lastReport = null
+        lastGamepadReport = null
+        lastKeyboardReport = null
         _status.value = Status.Unregistered
     }
 }

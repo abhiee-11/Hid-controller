@@ -22,3 +22,8 @@ captures/
 # execution scratch (plan ledger, build logs)
 .superpowers/
 
+
+read_gamepad.ps1
+*.yyyy-mm.txt
+sc*.png
+ui.xml

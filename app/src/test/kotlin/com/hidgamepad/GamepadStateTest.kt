@@ -5,6 +5,141 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+private fun ByteArray.toHexString(): String = joinToString("") { "%02X ".format(it).padEnd(3) }.let { it }
+
+private data class HidField(
+    val reportSize: Int,
+    val reportCount: Int,
+    val flags: Int,
+    val usagePage: Int,
+    val usages: List<Int>,
+    val usageMin: Int?,
+    val usageMax: Int?,
+    val logicalMin: Int,
+    val logicalMax: Int,
+    val reportId: Int,
+) {
+    val bits: Int get() = reportSize * reportCount
+    val isConstant: Boolean get() = (flags and 0x01) != 0
+}
+
+private data class DescriptorSummary(
+    val inputBits: Int,
+    val reportIdItemCount: Int,
+    val reportIds: List<Int>,
+    val applicationCollections: Int,
+    val physicalCollections: Int,
+    val physicalPointerUsages: List<Int>,
+    val fields: List<HidField>,
+) {
+    fun fieldsFor(reportId: Int): List<HidField> = fields.filter { it.reportId == reportId }
+    fun bitsFor(reportId: Int): Int = fieldsFor(reportId).sumOf { it.bits }
+}
+
+/** Small test-only HID short-item walker that totals Input item payloads. */
+private fun parseDescriptor(descriptor: ByteArray): DescriptorSummary {
+    val bytes = descriptor.map { it.toInt() and 0xFF }
+    var i = 0
+    var usagePage = 0
+    var reportSize = 0
+    var reportCount = 0
+    var logicalMin = 0
+    var logicalMax = 0
+    var reportIdItems = 0
+    var currentReportId = 0
+    val reportIds = mutableListOf<Int>()
+    var applicationCollections = 0
+    var physicalCollections = 0
+    val physicalPointerUsages = mutableListOf<Int>()
+    val usages = mutableListOf<Int>()
+    var usageMin: Int? = null
+    var usageMax: Int? = null
+    val fields = mutableListOf<HidField>()
+
+    fun signedValue(raw: List<Int>): Int {
+        var v = 0
+        for ((idx, b) in raw.withIndex()) v = v or (b shl (8 * idx))
+        val bits = raw.size * 8
+        return if (bits > 0 && bits < 32 && (v and (1 shl (bits - 1))) != 0) v - (1 shl bits) else v
+    }
+
+    fun unsignedValue(raw: List<Int>): Int {
+        var v = 0
+        for ((idx, b) in raw.withIndex()) v = v or (b shl (8 * idx))
+        return v
+    }
+
+    while (i < bytes.size) {
+        val header = bytes[i]
+        if (header == 0xFE) {
+            val count = bytes[i + 1]
+            i += 2 + count
+            continue
+        }
+        val tag = (header shr 4) and 0x0F
+        val type = (header shr 2) and 0x03
+        val sizeCode = header and 0x03
+        val dataLen = when (sizeCode) { 0 -> 0; 1 -> 1; 2 -> 2; else -> 4 }
+        val data = bytes.subList(i + 1, minOf(bytes.size, i + 1 + dataLen))
+        when (type) {
+            1 -> { // Global
+                when (tag) {
+                    0 -> usagePage = unsignedValue(data)
+                    1 -> logicalMin = signedValue(data)
+                    2 -> logicalMax = signedValue(data)
+                    7 -> reportSize = unsignedValue(data)
+                    8 -> {
+                        reportIdItems++
+                        currentReportId = unsignedValue(data)
+                        reportIds.add(currentReportId)
+                    }
+                    9 -> reportCount = unsignedValue(data)
+                }
+            }
+            2 -> { // Local
+                when (tag) {
+                    0 -> usages.add(unsignedValue(data))
+                    1 -> usageMin = unsignedValue(data)
+                    2 -> usageMax = unsignedValue(data)
+                }
+            }
+            0 -> { // Main
+                if (tag == 8) { // Input
+                    val flags = if (data.isNotEmpty()) data[0] else 0
+                    fields.add(
+                        HidField(
+                            reportSize = reportSize,
+                            reportCount = reportCount,
+                            flags = flags,
+                            usagePage = usagePage,
+                            usages = usages.toList(),
+                            usageMin = usageMin,
+                            usageMax = usageMax,
+                            logicalMin = logicalMin,
+                            logicalMax = logicalMax,
+                            reportId = currentReportId,
+                        ),
+                    )
+                    usages.clear()
+                    usageMin = null
+                    usageMax = null
+                } else if (tag == 10) { // Collection
+                    if (data.isNotEmpty() && data[0] == 1) applicationCollections++
+                    else if (data.isNotEmpty() && data[0] == 0) {
+                        physicalCollections++
+                        // The local Usage item immediately before this Physical collection is its usage.
+                        if (usages.isNotEmpty()) physicalPointerUsages.add(usages.last())
+                        usages.clear()
+                    }
+                }
+            }
+        }
+        i += 1 + dataLen
+    }
+    return DescriptorSummary(fields.sumOf { it.bits }, reportIdItems, reportIds.toList(), applicationCollections, physicalCollections, physicalPointerUsages.toList(), fields)
+}
+
+
 class GamepadStateTest {
 
     @Test
@@ -13,9 +148,9 @@ class GamepadStateTest {
         assertEquals(GamepadState.REPORT_SIZE, report.size)
         assertEquals(0, report[0].toInt())
         assertEquals(0, report[1].toInt())
-        assertEquals(GamepadState.HAT_NEUTRAL, report[2].toInt())
+        assertEquals(GamepadState.HAT_NEUTRAL, report[4].toInt())
+        assertEquals(0, report[2].toInt())
         assertEquals(0, report[3].toInt())
-        assertEquals(0, report[4].toInt())
         assertEquals(0, report[5].toInt())
         assertEquals(0, report[6].toInt())
         assertEquals(0, report[7].toInt())
@@ -24,28 +159,40 @@ class GamepadStateTest {
 
     @Test
     fun `buttons spread across bytes 0 and 1`() {
-        val mask = (1 shl Btn.A) or (1 shl Btn.L1) // bit 0 and bit 8
+        val mask = (1 shl Btn.A) or (1 shl Btn.START) // bit 0 and bit 11
         val report = GamepadState(buttons = mask).encodeReport()
         assertEquals(0x01, report[0].toInt())
-        assertEquals(0x01, report[1].toInt())
+        assertEquals(0x08, report[1].toInt()) // bit 11 -> byte 1, bit 3
     }
 
     @Test
-    fun `signed axes clamp to -127 and 127`() {
+    fun `left stick on bytes 3-4 and right stick on bytes 7-8 signed`() {
         val report = GamepadState(lx = -1f, rx = 1f).encodeReport()
-        assertEquals(-127, report[3].toInt())
-        assertEquals(127, report[5].toInt())
+        assertEquals(-127, report[2].toInt()) // left stick X
+        assertEquals(0, report[3].toInt())    // left stick Y untouched
+        assertEquals(127, report[5].toInt())  // right stick Z
+        assertEquals(0, report[6].toInt())    // right stick Rz untouched
     }
 
     @Test
-    fun `triggers map 0 to 0 and 1 to 255`() {
-        val neutral = GamepadState().encodeReport()
-        assertEquals(0, neutral[7].toInt())
+    fun `analog triggers on bytes 5-6 map quarter and three-quarter`() {
+        // Brake (left trigger) 25%, Gas (right trigger) 75%.
+        val report = GamepadState(lt = 0.25f, rt = 0.75f).encodeReport()
+        assertEquals(64, report[7].toInt() and 0xFF)   // 255 * 0.25 = 63.75 -> 64
+        assertEquals(191, report[8].toInt() and 0xFF)  // 255 * 0.75 = 191.25 -> 191
         val full = GamepadState(lt = 1f, rt = 1f).encodeReport()
         assertEquals(255, full[7].toInt() and 0xFF)
         assertEquals(255, full[8].toInt() and 0xFF)
-        // 255 in two's complement is -1; check explicit byte value
         assertEquals(0xFF.toByte(), full[8])
+    }
+
+    @Test
+    fun `trigger and right-stick byte positions never collide`() {
+        val braked = GamepadState(lt = 0.5f).encodeReport()
+        val stirred = GamepadState(rx = 1f).encodeReport()
+        assertEquals(128, braked[7].toInt() and 0xFF)
+        assertEquals(127, stirred[5].toInt())
+        assertEquals(0, stirred[7].toInt())
     }
 
     @Test
@@ -67,19 +214,153 @@ class GamepadStateTest {
     }
 
     @Test
-    fun `descriptor starts with desktop gamepad and no report id`() {
-        assertTrue(GAMEPAD_DESCRIPTOR[0] == 0x05.toByte() && GAMEPAD_DESCRIPTOR[1] == 0x01.toByte())
-        assertTrue(GAMEPAD_DESCRIPTOR[2] == 0x09.toByte() && GAMEPAD_DESCRIPTOR[3] == 0x05.toByte())
-        assertEquals(0xC0.toByte(), GAMEPAD_DESCRIPTOR.last())
-        assertFalse("desc must not hold a report ID item", GAMEPAD_DESCRIPTOR.any { it == 0x85.toByte() })
+    fun `combined descriptor has three collections and report ids`() {
+        assertTrue(COMBINED_HID_DESCRIPTOR[0] == 0x05.toByte() && COMBINED_HID_DESCRIPTOR[1] == 0x01.toByte())
+        assertTrue(COMBINED_HID_DESCRIPTOR[2] == 0x09.toByte() && COMBINED_HID_DESCRIPTOR[3] == 0x06.toByte())
+        assertEquals(0xC0.toByte(), COMBINED_HID_DESCRIPTOR.last())
+        val summary = parseDescriptor(COMBINED_HID_DESCRIPTOR)
+        assertEquals(4, summary.applicationCollections)
+        assertEquals(listOf(1, 2, 3, 4), summary.reportIds)
+        assertEquals(4, summary.reportIdItemCount)
     }
 
     @Test
-    fun `descriptor declares 9 bytes of input fields`() {
-        val hex = GAMEPAD_DESCRIPTOR.toHexString()
-        // 16 x 1-bit buttons + 2 x 4-bit (hat+pad) + 6 x 8-bit axes = 16 + 8 + 48 = 72 bits = 9 bytes
-        assertTrue(hex.contains("9510"))
-        assertTrue(hex.contains("75 08".replace(" ", "")))
+    fun `each combined payload has its expected bit length`() {
+        val summary = parseDescriptor(COMBINED_HID_DESCRIPTOR)
+        assertEquals(72, summary.bitsFor(GAMEPAD_REPORT_ID))
+        assertEquals(9, summary.bitsFor(GAMEPAD_REPORT_ID) / 8)
+        assertEquals(64, summary.bitsFor(KEYBOARD_REPORT_ID))
+        assertEquals(8, summary.bitsFor(KEYBOARD_REPORT_ID) / 8)
+        assertEquals(40, summary.bitsFor(MOUSE_REPORT_ID))
+        assertEquals(5, summary.bitsFor(MOUSE_REPORT_ID) / 8)
+        assertEquals(16, summary.bitsFor(CONSUMER_REPORT_ID))
+        assertEquals(2, summary.bitsFor(CONSUMER_REPORT_ID) / 8)
+    }
+
+    @Test
+    fun `combined descriptor keyboard payload shape`() {
+        val keyboard = parseDescriptor(COMBINED_HID_DESCRIPTOR).fieldsFor(KEYBOARD_REPORT_ID)
+        assertEquals(3, keyboard.size)
+        val modifiers = keyboard[0]
+        val reserved = keyboard[1]
+        val keys = keyboard[2]
+        assertEquals(8, modifiers.reportCount * modifiers.reportSize)
+        assertEquals(8, reserved.bits)
+        assertTrue(reserved.isConstant)
+        assertEquals(48, keys.bits)
+        assertEquals(6, keys.reportCount)
+        assertEquals(8, keys.reportSize)
+    }
+
+    @Test
+    fun `keyboard child fields use keyboard keypad usage page`() {
+        val keyboard = parseDescriptor(COMBINED_HID_DESCRIPTOR).fieldsFor(KEYBOARD_REPORT_ID)
+        assertTrue(keyboard.isNotEmpty())
+        assertTrue(keyboard.all { it.usagePage == 0x07 })
+        val modifiers = keyboard[0]
+        val keys = keyboard[2]
+        // Modifier usages are declared on the Keyboard/Keypad page.
+        assertEquals(0x07, modifiers.usagePage)
+        assertEquals(0x07, keys.usagePage)
+        assertEquals(0xe0, modifiers.usageMin)
+        assertEquals(0xe7, modifiers.usageMax)
+        assertEquals(0, keys.usageMin)
+        assertEquals(0x65, keys.usageMax)
+        // All 8 modifier usages E0..E7 must be covered by usage min/max.
+        val hex = COMBINED_HID_DESCRIPTOR.toHexString()
+        assertTrue(hex.contains("19 E0"))
+        assertTrue(hex.contains("29 E7"))
+        assertEquals(64, parseDescriptor(COMBINED_HID_DESCRIPTOR).bitsFor(KEYBOARD_REPORT_ID))
+    }
+
+    @Test
+    fun `mouse has pointer physical collection and correct usage pages`() {
+        val summary = parseDescriptor(COMBINED_HID_DESCRIPTOR)
+        assertEquals(1, summary.physicalCollections)
+        assertEquals(listOf(0x01), summary.physicalPointerUsages)
+        val mouse = summary.fieldsFor(MOUSE_REPORT_ID)
+        assertTrue(mouse.all { it.reportId == MOUSE_REPORT_ID })
+        assertEquals(0x09, mouse[0].usagePage)
+        assertEquals(0x01, mouse[2].usagePage)
+        assertTrue((mouse[2].flags and 0x04) != 0)
+        assertEquals(0x0C, mouse[3].usagePage)
+        assertTrue((mouse[3].flags and 0x04) != 0)
+        assertEquals(40, summary.bitsFor(MOUSE_REPORT_ID))
+    }
+
+    @Test
+    fun `descriptor button field is sixteen one-bit values`() {
+        val button = parseDescriptor(COMBINED_HID_DESCRIPTOR).fieldsFor(GAMEPAD_REPORT_ID)[0]
+        assertEquals(16, button.reportCount)
+        assertEquals(1, button.reportSize)
+        assertEquals(16, button.bits)
+        assertEquals(1, button.usageMin)
+        assertEquals(16, button.usageMax)
+        assertFalse(button.isConstant)
+    }
+
+    @Test
+    fun `descriptor hat plus padding totals eight bits`() {
+        val fields = parseDescriptor(COMBINED_HID_DESCRIPTOR).fieldsFor(GAMEPAD_REPORT_ID)
+        val hat = fields[2] // buttons field 0, grouped X/Y field 1, hat field 2
+        val padding = fields[3]
+        assertEquals(4, hat.bits)
+        assertEquals(4, padding.bits)
+        assertEquals(8, hat.bits + padding.bits)
+        assertTrue("hat must set Null State", (hat.flags and 0x40) != 0)
+        assertTrue(padding.isConstant)
+    }
+
+    @Test
+    fun `descriptor has six eight-bit axes in standard order`() {
+        val summary = parseDescriptor(COMBINED_HID_DESCRIPTOR)
+        val axes = summary.fieldsFor(GAMEPAD_REPORT_ID).filter { it.reportSize == 8 && !it.isConstant }
+        val flatAxes = axes.flatMap { field -> field.usages.map { field.usagePage to it } }
+        assertEquals(listOf(
+            0x01 to 0x30, // X
+            0x01 to 0x31, // Y
+            0x01 to 0x32, // Z right stick X
+            0x01 to 0x35, // Rz right stick Y
+            0x02 to 0xC5, // Brake / left trigger
+            0x02 to 0xC4, // Accelerator / right trigger
+        ), flatAxes)
+    }
+
+    @Test
+    fun `neutral report is valid for declared ranges and null state`() {
+        val fields = parseDescriptor(COMBINED_HID_DESCRIPTOR).fieldsFor(GAMEPAD_REPORT_ID)
+        val hatField = fields.first { it.reportSize == 4 && (it.flags and 0x40) != 0 }
+        val neutral = GamepadState().encodeReport()
+        assertEquals(15, neutral[4].toInt() and 0x0F)
+        assertTrue("hat 15 is the Null State value", (hatField.flags and 0x40) != 0)
+        val axes = fields.filter { it.reportSize == 8 && !it.isConstant }
+        for (byteIndex in listOf(2, 3, 5, 6)) {
+            assertEquals(0, neutral[byteIndex].toInt())
+        }
+        for (byteIndex in listOf(7, 8)) {
+            assertEquals(0, neutral[byteIndex].toInt() and 0xFF)
+        }
+        val signedAxes = axes.filter { it.logicalMin < 0 }
+        val unsignedTriggers = axes.filter { it.logicalMin == 0 && it.logicalMax == 255 }
+        assertEquals(2, signedAxes.size)      // grouped X/Y and grouped Z/Rz
+        assertEquals(1, unsignedTriggers.size) // grouped Brake/Accelerator
+    }
+
+    @Test
+    fun `descriptor uses simulation brake then accelerator for analog triggers`() {
+        val hex = COMBINED_HID_DESCRIPTOR.toHexString()
+        // Usage Page (Simulation) start: 05 02
+        assertTrue("usage page simulation", hex.contains("05 02"))
+        // Brake first -> LTRIGGER after the Linux/AOSP mapping; then Accelerator -> RTRIGGER.
+        val sim = hex.substringAfter("05 02")
+        assertTrue("brake before accelerator", sim.contains("09 C5"))
+        assertTrue("accelerator after brake", sim.indexOf("09 C5") in 0 until sim.indexOf("09 C4"))
+        // Z/Rz are the new right stick (Android combo layout).
+        assertTrue(hex.contains("09 32"))
+        assertTrue(hex.contains("09 35"))
+        // Rx/Ry are no longer the right stick.
+        assertFalse(hex.contains("09 33"))
+        assertFalse(hex.contains("09 34"))
     }
 
     @Test

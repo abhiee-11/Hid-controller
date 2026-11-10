@@ -102,7 +102,12 @@ class MainActivity : ComponentActivity() {
         hapticsOn = getSharedPreferences("hid_gamepad", MODE_PRIVATE).getBoolean("haptics_on", true)
         hapticsStrength = getSharedPreferences("hid_gamepad", MODE_PRIVATE).getFloat("haptics_strength", 1.0f)
 
-        registerReceiver(bluetoothReceiver, IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED))
+        val btFilter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(bluetoothReceiver, btFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(bluetoothReceiver, btFilter)
+        }
         receiverRegistered = true
 
         val missing = REQUIRED_PERMISSIONS.filter {
