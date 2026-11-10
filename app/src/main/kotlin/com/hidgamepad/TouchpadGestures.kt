@@ -1,5 +1,6 @@
 package com.hidgamepad
 
+import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 
@@ -66,6 +67,9 @@ class TouchpadGestureRecognizer(
     private var scrollAccumX = 0f
     private var scrollAccumY = 0f
     private var scrollClassified = false
+    private var pinchAccum = 0f
+    private var pinchRefDistance = -1f
+    private var pinchLive = false
     private var pendingTapMs: Long? = null
     private var pendingTapX = 0f
     private var pendingTapY = 0f
@@ -98,6 +102,7 @@ class TouchpadGestureRecognizer(
     /** Releases whatever a live gesture is holding. Call on teardown. */
     fun reset(): List<PadAction> {
         val out = mutableListOf<PadAction>()
+        if (pinchLive) out += PadAction.ZoomEnd
         if (dragHeld) out += PadAction.Button(1, false)
         resetGesture()
         pendingTapMs = null
@@ -141,6 +146,7 @@ class TouchpadGestureRecognizer(
             lastCount = points.size
             lastX = cx
             lastY = cy
+            pinchRefDistance = -1f
             return
         }
         val dx = cx - lastX
@@ -158,13 +164,33 @@ class TouchpadGestureRecognizer(
                 if (dragClassified) emitBuffered(out)
             }
             Family.TWO -> {
-                scrollAccumX += dx
-                scrollAccumY += dy
-                if (!scrollClassified && travel > SCROLL_START_DP * density) {
-                    scrollClassified = true
+                if (points.size < 2) return
+                val distance = hypot(points[0].x - points[1].x, points[0].y - points[1].y)
+                if (pinchRefDistance < 0f) pinchRefDistance = distance
+                pinchAccum += distance - pinchRefDistance
+                pinchRefDistance = distance
+                if (!pinchLive && abs(pinchAccum) > PINCH_START_DP * density) {
+                    pinchLive = true
                     familyLocked = true
+                    scrollClassified = false
+                    out += PadAction.ZoomStart
                 }
-                if (scrollClassified) emitScroll(out)
+                if (pinchLive) {
+                    val step = PINCH_STEP_DP * density
+                    val steps = (pinchAccum / step).toInt()
+                    if (steps != 0) {
+                        pinchAccum -= steps * step
+                        out += PadAction.Zoom(steps)
+                    }
+                } else {
+                    scrollAccumX += dx
+                    scrollAccumY += dy
+                    if (!scrollClassified && travel > SCROLL_START_DP * density) {
+                        scrollClassified = true
+                        familyLocked = true
+                    }
+                    if (scrollClassified) emitScroll(out)
+                }
             }
             else -> Unit
         }
@@ -181,7 +207,9 @@ class TouchpadGestureRecognizer(
     }
 
     private fun end(nowMs: Long, out: MutableList<PadAction>) {
-        if (dragHeld) {
+        if (pinchLive) {
+            out += PadAction.ZoomEnd
+        } else if (dragHeld) {
             out += PadAction.Button(1, false)
         } else if (nowMs - startMs <= TAP_TIMEOUT_MS && travel <= TAP_SLOP_DP * density) {
             val button = when (family) {
@@ -225,6 +253,9 @@ class TouchpadGestureRecognizer(
         scrollAccumX = 0f
         scrollAccumY = 0f
         scrollClassified = false
+        pinchAccum = 0f
+        pinchRefDistance = -1f
+        pinchLive = false
     }
 
     private fun familyFor(count: Int): Family = when {

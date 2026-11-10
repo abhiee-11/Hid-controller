@@ -151,4 +151,48 @@ class TouchpadGestureTest {
         r.frame(fr(300, pt(1, 100f, 200f), pt(2, 140f, 200f)))
         assertEquals(listOf(PadAction.Click(2)), r.frame(fr(360)))
     }
+
+    @Test
+    fun `two fingers moving apart zoom and frame the gesture`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        r.frame(fr(50, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        assertEquals(
+            listOf(PadAction.ZoomStart, PadAction.Zoom(2)),
+            r.frame(fr(70, pt(1, 85f, 200f), pt(2, 155f, 200f))),
+        )
+        assertEquals(listOf(PadAction.ZoomEnd), r.frame(fr(90)))
+    }
+
+    @Test
+    fun `pinch wins when scroll and pinch cross together`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        r.frame(fr(50, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        assertEquals(
+            listOf(PadAction.ZoomStart, PadAction.Zoom(2)),
+            r.frame(fr(70, pt(1, 85f, 180f), pt(2, 155f, 180f))),
+        )
+    }
+
+    @Test
+    fun `a live pinch is not replaced by scroll`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        r.frame(fr(50, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        r.frame(fr(70, pt(1, 85f, 200f), pt(2, 155f, 200f)))
+        assertEquals(
+            emptyList<PadAction>(),
+            r.frame(fr(90, pt(1, 85f, 170f), pt(2, 155f, 170f))),
+        )
+    }
+
+    @Test
+    fun `reset ends a live pinch`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        r.frame(fr(50, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        r.frame(fr(70, pt(1, 85f, 200f), pt(2, 155f, 200f)))
+        assertEquals(listOf(PadAction.ZoomEnd), r.reset())
+    }
 }
