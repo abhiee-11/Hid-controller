@@ -195,4 +195,43 @@ class TouchpadGestureTest {
         r.frame(fr(70, pt(1, 85f, 200f), pt(2, 155f, 200f)))
         assertEquals(listOf(PadAction.ZoomEnd), r.reset())
     }
+
+    @Test
+    fun `three finger tap is a middle click`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f)))
+        assertEquals(listOf(PadAction.Click(3)), r.frame(fr(140)))
+    }
+
+    @Test
+    fun `three finger swipe emits one host action`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f)))
+        r.frame(fr(50, pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f)))
+        assertEquals(
+            listOf(PadAction.Host(PadDirection.LEFT)),
+            r.frame(fr(70, pt(1, 50f, 200f), pt(2, 90f, 200f), pt(3, 130f, 200f))),
+        )
+        assertEquals(
+            emptyList<PadAction>(),
+            r.frame(fr(90, pt(1, 0f, 200f), pt(2, 40f, 200f), pt(3, 80f, 200f))),
+        )
+        assertEquals(emptyList<PadAction>(), r.frame(fr(120)))
+    }
+
+    @Test
+    fun `three finger short drag is neither tap nor swipe`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f)))
+        r.frame(fr(50, pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f)))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(70, pt(1, 90f, 200f), pt(2, 130f, 200f), pt(3, 170f, 200f))))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(100)))
+    }
+
+    @Test
+    fun `four fingers do not click`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f), pt(4, 220f, 200f)))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(120)))
+    }
 }

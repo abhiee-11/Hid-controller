@@ -70,6 +70,7 @@ class TouchpadGestureRecognizer(
     private var pinchAccum = 0f
     private var pinchRefDistance = -1f
     private var pinchLive = false
+    private var swipeEmitted = false
     private var pendingTapMs: Long? = null
     private var pendingTapX = 0f
     private var pendingTapY = 0f
@@ -192,8 +193,20 @@ class TouchpadGestureRecognizer(
                     if (scrollClassified) emitScroll(out)
                 }
             }
-            else -> Unit
+            Family.THREE -> {
+                if (!swipeEmitted && travel > SWIPE_DISTANCE_DP * density) {
+                    out += PadAction.Host(direction(cx - startX, cy - startY))
+                    swipeEmitted = true
+                    familyLocked = true
+                }
+            }
+            null -> Unit
         }
+    }
+
+    private fun direction(dx: Float, dy: Float): PadDirection = when {
+        abs(dx) >= abs(dy) -> if (dx >= 0f) PadDirection.RIGHT else PadDirection.LEFT
+        else -> if (dy >= 0f) PadDirection.DOWN else PadDirection.UP
     }
 
     private fun emitScroll(out: MutableList<PadAction>) {
@@ -215,7 +228,8 @@ class TouchpadGestureRecognizer(
             val button = when (family) {
                 Family.ONE -> if (dragClassified) 0 else 1
                 Family.TWO -> if (scrollClassified) 0 else 2
-                else -> 0
+                Family.THREE -> if (maxPoints == 3 && !swipeEmitted) 3 else 0
+                null -> 0
             }
             if (button != 0) {
                 out += PadAction.Click(button)
@@ -256,6 +270,7 @@ class TouchpadGestureRecognizer(
         pinchAccum = 0f
         pinchRefDistance = -1f
         pinchLive = false
+        swipeEmitted = false
     }
 
     private fun familyFor(count: Int): Family = when {
