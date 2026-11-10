@@ -63,6 +63,9 @@ class TouchpadGestureRecognizer(
     private var dragClassified = false
     private var dragHeld = false
     private var doubleTapCandidate = false
+    private var scrollAccumX = 0f
+    private var scrollAccumY = 0f
+    private var scrollClassified = false
     private var pendingTapMs: Long? = null
     private var pendingTapX = 0f
     private var pendingTapY = 0f
@@ -154,18 +157,46 @@ class TouchpadGestureRecognizer(
                 }
                 if (dragClassified) emitBuffered(out)
             }
+            Family.TWO -> {
+                scrollAccumX += dx
+                scrollAccumY += dy
+                if (!scrollClassified && travel > SCROLL_START_DP * density) {
+                    scrollClassified = true
+                    familyLocked = true
+                }
+                if (scrollClassified) emitScroll(out)
+            }
             else -> Unit
         }
+    }
+
+    private fun emitScroll(out: MutableList<PadAction>) {
+        val step = SCROLL_STEP_DP * density
+        val wheel = (scrollAccumY / step).toInt()
+        val hPan = (scrollAccumX / step).toInt()
+        if (wheel == 0 && hPan == 0) return
+        out += PadAction.Scroll(wheel, hPan)
+        if (wheel != 0) scrollAccumY -= wheel * step
+        if (hPan != 0) scrollAccumX -= hPan * step
     }
 
     private fun end(nowMs: Long, out: MutableList<PadAction>) {
         if (dragHeld) {
             out += PadAction.Button(1, false)
-        } else if (!dragClassified && family == Family.ONE && nowMs - startMs <= TAP_TIMEOUT_MS) {
-            out += PadAction.Click(1)
-            pendingTapMs = nowMs
-            pendingTapX = startX
-            pendingTapY = startY
+        } else if (nowMs - startMs <= TAP_TIMEOUT_MS && travel <= TAP_SLOP_DP * density) {
+            val button = when (family) {
+                Family.ONE -> if (dragClassified) 0 else 1
+                Family.TWO -> if (scrollClassified) 0 else 2
+                else -> 0
+            }
+            if (button != 0) {
+                out += PadAction.Click(button)
+                if (button == 1) {
+                    pendingTapMs = nowMs
+                    pendingTapX = startX
+                    pendingTapY = startY
+                }
+            }
         }
         resetGesture()
     }
@@ -191,6 +222,9 @@ class TouchpadGestureRecognizer(
         dragClassified = false
         dragHeld = false
         doubleTapCandidate = false
+        scrollAccumX = 0f
+        scrollAccumY = 0f
+        scrollClassified = false
     }
 
     private fun familyFor(count: Int): Family = when {
