@@ -7,9 +7,16 @@ needed on the receiving side. Mode switching happens in the app and does not re-
 
 - Selected host type: Windows PC or Android phone/tablet (affects instructions only)
 - Modes: Gamepad, Mouse, and Keyboard
-- Combined HID descriptor: report ID 1 keyboard (8 bytes), report ID 2 mouse (5 bytes,
-  including pan), report ID 3 gamepad (9 bytes), report ID 4 consumer control (2 bytes,
-  reserved). Bytes are frozen — changing them requires re-pairing the host.
+- Two HID profiles, chosen in Settings:
+  - **Keyboard + mouse + gamepad** — one composite device: report ID 1 keyboard (8 bytes),
+    report ID 2 mouse (5 bytes, including pan), report ID 3 gamepad (9 bytes), report ID 4
+    consumer control (2 bytes, reserved). Use it for the Android tablet.
+  - **Gamepad only** — a dedicated gamepad in the W3C standard layout: 16 buttons in
+    standard order, X/Y/Rx/Ry as signed 16-bit axes, Z/Rz as the triggers, and a 4-bit hat
+    (13-byte report). Use it for PC games and browser games: **a host will not recognise a
+    composite device as a gamepad**, so Chrome and DirectInput saw no gamepad at all until
+    this profile existed.
+  - Bytes are frozen per profile — changing the profile requires re-pairing the host.
 - Gamepad: 16 buttons, D-pad (hat switch), dual analog sticks, analog L2/R2 triggers, tilt
 - Mouse: buttonless trackpad — tap click, two-finger tap right-click, two-finger scroll
   (vertical and horizontal), pinch zoom, double-tap then hold to drag, three-finger tap
@@ -60,6 +67,10 @@ with Windows before this app ever registered its HID service, Windows keeps trea
 it as a phone/audio device and never opens the HID channels. Remove the phone under
 Bluetooth & devices and pair it again while the app is open and registered.
 
+The same caching applies to the **HID profile**: a host reads the report descriptor once,
+at pairing. Switching the profile in Settings therefore does nothing until the host
+removes the phone and pairs it again.
+
 ## Mouse gestures
 
 Mouse mode is one full-bleed pad with no on-screen buttons. Every gesture is sent through
@@ -84,6 +95,7 @@ the pair.
 ```
 app/src/main/kotlin/com/hidgamepad/
   GamepadState.kt       Combined HID descriptor + gamepad/keyboard/mouse encoders (unit-tested)
+  GamepadProfiles.kt    The two HID profiles: descriptors, report encoders, profile choice
   HidGamepadManager.kt  Bluetooth HID profile: register, connect, send, heartbeat
   TouchpadGestures.kt   Pure pointer-frame recognizer (tap, scroll, pinch, swipe) — unit-tested
   TouchpadGestureBridge.kt  Gestures -> mouse/keyboard/consumer reports with release timing

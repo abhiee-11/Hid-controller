@@ -86,6 +86,32 @@ Two independent reference implementations in this project's own research
 repo has a "ID 1 gamepad-only" descriptor and GKME exposes a "GAMEPAD_ONLY" descriptor mode
 selected at `registerApp` time, versus its "combo" modes.
 
+## Measured facts (continued, after the profile shipped)
+
+7. **Chrome now enumerates the phone as a gamepad.** With the `GAMEPAD_ONLY` profile
+   registered and the host connected, `navigator.getGamepads()` returns
+   `{id: "HID Gamepad (Vendor: 001d Product: 0000)", connected: true, buttons: 16}` — where
+   before the change every slot was `null`. The browser path is fixed.
+
+8. **The host still decodes the OLD descriptor until it re-pairs.** The Windows device node
+   is `HID\{00001124-...-COL03}\8&1623005&1&0002` with siblings `COL01` (Keyboard),
+   `COL02` (Mouse), `COL03` (Game controller) and `COL04` (Consumer control) — four
+   top-level collections, which is the *composite* descriptor. The gamepad-only descriptor
+   has exactly one collection, so a re-parsed node would have no COL01/COL02/COL04 siblings.
+   Meanwhile the PC's SDP cache (`BTHPORT\...\Devices\6C40E8EB8FE0\CachedServices\0001000F`)
+   already contains the gamepad-only descriptor bytes, so the SDP record updated and the
+   *parsed* device node did not.
+
+   Consequence: the phone sends the new 13-byte report, but the host parses it with the old
+   9-byte layout, so the axes decode to nonsense and a button press does not land on the
+   button the host expects. **A re-pair on the host is mandatory** — this is the frozen
+   descriptor's cost, and the app says so in Settings.
+
+   Measured proof the phone side is correct: the logcat shows
+   `sendReport id=3 payload=[01 00 00 00 00 00 00 00 00 00 00 00 0F] length=13` on an A-button
+   press — button bit 0 set, then released. The app sends what it should; the host is
+   reading it with a stale descriptor.
+
 ## Decision
 
 Ship **two registration profiles**, chosen by the user at pairing time:
@@ -151,3 +177,14 @@ Two measurements decide success, both on real hosts:
 - **Android tablet:** after a re-pair, `getevent` on the tablet must show the phone's input
   node, and each app button must produce the keycode the table in "Measured facts" demands —
   in particular MODE must produce `BUTTON_MODE` (316), not `BUTTON_THUMBL`.
+
+### Status as of 2026-11-11
+
+| Check | Result | Evidence |
+|---|---|---|
+| Chrome enumerates a gamepad | PASS | `navigator.getGamepads()` → `{id: "HID Gamepad (Vendor: 001d Product: 0000)", connected: true, buttons: 16}`; before the change every slot was `null`. |
+| Phone sends the right bytes | PASS | logcat `sendReport id=3 payload=[01 00 ... 0F] length=13` on an A press, then `[00 00 ...]` on release. |
+| Host decodes the new descriptor | NOT YET | The Windows node still has COL01–COL04 siblings (the old composite). A host re-pair is required. |
+| Tablet enumerates the phone | NOT YET | `/dev/input/` on <TABLET_SERIAL> has no HID node from the phone; the tablet holds the old cached descriptor. |
+| Button keycodes on the tablet | NOT YET | Requires the tablet to re-pair and enumerate first. |
+| MODE/L3/R3 bit order | FIXED, not host-verified | Correct per the tablet's `Generic.kl` and the kernel's `hid-input` mapping; needs the tablet re-pair to observe. |

@@ -204,6 +204,54 @@ Mouse mode is now a buttonless pad with no on-screen mouse buttons. New files:
   the app is registered, then pair again. Documented in the README.
 - Cache key inspected: `HKLM:\SYSTEM\CurrentControlSet\Services\BTHPORT\Parameters\Devices\6c40e8eb8fe0\CachedServices`.
 
+## Gamepad in games (2026-11-11)
+
+Design: `docs/superpowers/specs/2026-11-11-hid-profiles-and-gamepad-conformance-design.md`
+Plan: `docs/superpowers/plans/2026-11-11-hid-profiles-and-gamepad-conformance.md`
+
+### Why games did not respond (measured, not inferred)
+
+| Finding | Evidence |
+|---|---|
+| Windows enumerated the phone correctly | `Get-PnpDevice` shows `HID Keyboard Device`, `HID-compliant mouse`, `HID-compliant touch pad`, `HID-compliant consumer control device`, `HID-compliant game controller` |
+| **Chrome saw zero gamepads** | `navigator.getGamepads()` returned `[null,null,null,null,null,null,null,null]` while the phone was connected (`connState=2`) and streaming reports (`sendReport id=3 ... acceptedByAndroid=true`) |
+| A composite device is not a gamepad to a host | the gamepad collection is third in the descriptor, after the keyboard and mouse, and its buttons are in Android's positional order, so no host can derive the W3C standard layout |
+| Android decodes gamepad buttons positionally | the tablet's `/system/usr/keylayout/Generic.kl` maps 304→`BUTTON_A` … 316→`BUTTON_MODE`, 317→`BUTTON_THUMBL`, 318→`BUTTON_THUMBR`; the kernel maps button N to `BTN_GAMEPAD + N - 1` = 303+N (`drivers/hid/hid-input.c`, `case HID_UP_BUTTON: code = ((usage->hid - 1) & HID_USAGE)` with `case HID_GD_GAMEPAD: code += BTN_GAMEPAD`) |
+| MODE, L3 and R3 were permuted | the app used `MODE=13, L3=14, R3=12`; the table above requires `MODE=12, L3=13, R3=14`. A MODE press reached the tablet as L3 |
+| The triggers and axes were already correct | the tablet's keylayout maps `axis 0x09 RTRIGGER` / `0x0a LTRIGGER`; the kernel maps Simulation Accelerator→`ABS_GAS` and Brake→`ABS_BRAKE`, so Brake→LTRIGGER and Accelerator→RTRIGGER is correct as written |
+| Valorant cannot be fixed in the app | XInput is a proprietary USB protocol keyed on VID `045E`; a Bluetooth HID peripheral can never be one. It needs a PC-side translator (Steam Input or ViGEm), which was deferred by the user |
+
+### What changed
+
+- `GamepadState.kt`: MODE/L3/R3 moved to the Android positional bits (12/13/14).
+- `GamepadProfiles.kt` (new): a `GAMEPAD_ONLY` profile with a dedicated gamepad collection in
+  the W3C standard layout — 16 buttons in standard order, X/Y/Rx/Ry as signed 16-bit axes,
+  Z/Rz as the triggers, and a 4-bit hat. The composite profile is unchanged.
+- `HidGamepadManager.kt`: registers `descriptorFor(profile)` with `subclassFor(profile)`
+  (`SUBCLASS1_NONE` for the composite, `SUBCLASS2_GAMEPAD` for the gamepad-only profile) and
+  sends `reportFor(profile, state)`.
+- Settings: a **HID profile** row, with the warning that a profile change needs a re-pair.
+
+### Measured results
+
+| Check | Result | Evidence |
+|---|---|---|
+| Unit tests | PASS | `gradlew testDebugUnitTest` → 133 tests, 0 failures (2026-11-11 22:0x) |
+| Chrome enumerates a gamepad | **PASS** | `navigator.getGamepads()` → `{id: "HID Gamepad (Vendor: 001d Product: 0000)", connected: true, buttons: 16}`; every slot was `null` before the change |
+| The phone sends the right bytes | **PASS** | logcat `sendReport id=3 payload=[01 00 00 00 00 00 00 00 00 00 00 00 0F] length=13` on an A press, then `[00 00 …]` on release |
+| The host decodes the new descriptor | NOT YET | the Windows node still has COL01 (Keyboard), COL02 (Mouse), COL03 (Game controller) and COL04 (Consumer control) siblings — four collections, i.e. the **old** composite. The SDP cache (`…\Devices\6C40E8EB8FE0\CachedServices\0001000F`) already holds the gamepad-only descriptor, so the SDP record updated while the parsed device node did not. A host re-pair is required. |
+| Tablet enumerates the phone | NOT YET | `/dev/input/` on <TABLET_SERIAL> has no HID node from the phone; the tablet holds the old cached descriptor and its HID host link does not form |
+| Tablet button keycodes (MODE = 316) | NOT YET | requires the tablet to re-pair and enumerate first |
+| Valorant | OUT OF SCOPE | needs a PC-side XInput translator; deferred by the user |
+
+### User action required
+
+Both hosts must re-pair for the gamepad-only profile to take effect:
+
+1. On the host, remove the phone under Bluetooth settings.
+2. On the phone, tap **Make discoverable** in the app.
+3. On the host, add the phone again while the app is open and registered.
+
 ## Corrections to earlier handoff notes
 
 - Tablet HID enumeration **does** exist in this report (gamepad input node at

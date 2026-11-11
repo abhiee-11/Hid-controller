@@ -22,6 +22,28 @@ Host (tablet): any tablet that can pair to a Bluetooth HID gamepad
 - [ ] L2/R2 (buttons top) = analog triggers Rx/Ry: press = 0 → 255 ramp (binary hold = max 255).
 - [ ] 16 buttons: A,B,X,Y, L1,R1, SELECT,START return distinct HID buttons 1,2,3,4,9,10,11,12.
 
+## HID profile and gamepad
+
+The app registers one of two HID profiles. **The host caches the descriptor at pairing
+time, so switching profiles requires removing the phone from the host's Bluetooth list and
+pairing it again.** A profile change without a re-pair has no effect on the host.
+
+| Profile | What it registers | Use it for |
+|---|---|---|
+| Keyboard + mouse + gamepad | the 4-in-1 composite descriptor | the Android tablet; mouse + keyboard + gamepad over one link |
+| Gamepad only | a dedicated gamepad, W3C standard layout | PC games and browser games — a host will not recognise a composite device as a gamepad |
+
+| Profile | Action | Expected | Result |
+|---|---|---|---|
+| Gamepad only | Chrome: open a page that reads `navigator.getGamepads()` | one pad, 16 buttons, 6 axes | PASS (2026-11-11) |
+| Gamepad only | Press A on the phone | the host sees one button press | needs a host re-pair |
+| Gamepad only | Move the right stick | the right stick moves on the host | needs a host re-pair |
+| Composite | Re-pair the tablet | the tablet lists the phone as a gamepad | needs a tablet re-pair |
+| Composite | Press MODE on the phone | the tablet reports BUTTON_MODE (316) | needs a tablet re-pair |
+
+Re-pair steps: on the host, remove the phone under Bluetooth settings; on the phone, tap
+**Make discoverable**; on the host, add the phone again while the app is open.
+
 ## Mouse gestures (buttonless pad)
 
 The mouse mode has no on-screen buttons. Every gesture below goes out through the frozen
