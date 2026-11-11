@@ -45,6 +45,19 @@ fun descriptorFor(profile: HidProfile): ByteArray = when (profile) {
     HidProfile.GAMEPAD_ONLY -> GAMEPAD_ONLY_DESCRIPTOR
 }
 
+/**
+ * The Bluetooth HID subclass the phone registers with.
+ *
+ * The composite profile uses SUBCLASS1_NONE so the descriptor speaks for itself: Android's
+ * InputReader then reads each collection separately instead of collapsing them under
+ * GAMEPAD, which is what suppressed SOURCE_MOUSE. The gamepad-only profile uses
+ * SUBCLASS2_GAMEPAD, because a device that carries nothing but a gamepad should say so.
+ */
+fun subclassFor(profile: HidProfile): Byte = when (profile) {
+    HidProfile.COMPOSITE -> 0x00
+    HidProfile.GAMEPAD_ONLY -> 0x02
+}
+
 /** The report the phone sends for the given profile. */
 fun reportFor(profile: HidProfile, state: GamepadState): ByteArray = when (profile) {
     HidProfile.COMPOSITE -> state.encodeReport()

@@ -73,6 +73,21 @@ class HidGamepadManager(context: Context) {
     private var hidDevice: BluetoothHidDevice? = null
     private var appRegistered = false
 
+    /**
+     * Which HID descriptor the phone registers. The host caches the descriptor at pairing
+     * time, so changing this only takes effect after the user re-pairs.
+     */
+    var hidProfile: HidProfile = HidProfile.COMPOSITE
+        set(value) {
+            if (field == value) return
+            field = value
+            if (appRegistered) {
+                // The stack keeps the old registration; a new one needs the host to
+                // re-read the descriptor, which only a re-pair can achieve.
+                Log.i(TAG, "HID profile changed to $value - re-pair the host to apply it")
+            }
+        }
+
     /** True between the stack accepting registerApp() and its status callback arriving.
      * Without this, a second start() re-registers while the first attempt is still in flight;
      * the stack rejects the duplicate and schedules a spurious retry. */
@@ -356,11 +371,8 @@ class HidGamepadManager(context: Context) {
             "HID Gamepad",
             "Bluetooth gamepad for host computers",
             "HidGamepad",
-            // SUBCLASS1_NONE (0x00): let the descriptor speak for itself so Android's
-            // InputReader assigns SOURCE_MOUSE to the mouse collection instead of
-            // collapsing everything under GAMEPAD (which SUBCLASS1_COMBO caused).
-            BluetoothHidDevice.SUBCLASS1_NONE,
-            COMBINED_HID_DESCRIPTOR,
+            subclassFor(hidProfile),
+            descriptorFor(hidProfile),
         )
         Log.i(TAG, "registerApp requested (attempt ${registerRetryCount + 1})")
         registerInFlight = true
@@ -460,7 +472,7 @@ class HidGamepadManager(context: Context) {
     /** Push a fresh gamepad snapshot; sends only when the report actually changed. */
     fun updateGamepad(state: GamepadState) {
         if (hostDevice == null) return
-        val report = state.encodeReport()
+        val report = reportFor(hidProfile, state)
         if (lastGamepadReport?.contentEquals(report) == true) return
         lastGamepadReport = report
         sendReportNow(GAMEPAD_REPORT_ID, report)
@@ -567,7 +579,7 @@ class HidGamepadManager(context: Context) {
     private fun startHeartbeat() {
         // Seed the neutral report so the host starts receiving a heartbeat right away,
         // even before the first input happens.
-        if (lastGamepadReport == null) lastGamepadReport = GamepadState().encodeReport()
+        if (lastGamepadReport == null) lastGamepadReport = reportFor(hidProfile, GamepadState())
         if (lastKeyboardReport == null) lastKeyboardReport = KeyboardState().encodeReport()
         lastGamepadReport?.let { sendReportNow(GAMEPAD_REPORT_ID, it) }
         mainHandler.removeCallbacks(heartbeat)
@@ -587,7 +599,7 @@ class HidGamepadManager(context: Context) {
     fun releaseAllInputs() {
         val keyboard = KeyboardState().encodeReport()
         val mouse = MouseState().encodeReport()
-        val gamepad = GamepadState().encodeReport()
+        val gamepad = reportFor(hidProfile, GamepadState())
         val consumer = ConsumerState().encodeReport()
         sendReportNow(KEYBOARD_REPORT_ID, keyboard)
         sendReportNow(MOUSE_REPORT_ID, mouse)

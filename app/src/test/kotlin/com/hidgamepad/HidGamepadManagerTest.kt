@@ -9,6 +9,40 @@ import org.junit.Test
 class HidGamepadManagerTest {
 
     @Test
+    fun `the gamepad only profile registers with the gamepad subclass`() {
+        // A dedicated gamepad must announce itself as one, or a host may still treat the
+        // device as a generic HID peripheral.
+        assertEquals(2, subclassFor(HidProfile.GAMEPAD_ONLY).toInt())
+    }
+
+    @Test
+    fun `the composite profile registers with the unspecified subclass`() {
+        // SUBCLASS1_NONE lets the descriptor speak for itself: Android's InputReader then
+        // reads each collection separately instead of collapsing them under GAMEPAD.
+        assertEquals(0, subclassFor(HidProfile.COMPOSITE).toInt())
+    }
+
+    @Test
+    fun `the composite profile uses the composite descriptor`() {
+        assertEquals(COMBINED_HID_DESCRIPTOR, descriptorFor(HidProfile.COMPOSITE))
+    }
+
+    @Test
+    fun `the gamepad only profile uses its own descriptor`() {
+        assertEquals(GAMEPAD_ONLY_DESCRIPTOR, descriptorFor(HidProfile.GAMEPAD_ONLY))
+    }
+
+    @Test
+    fun `the composite profile keeps the nine byte report`() {
+        assertEquals(9, reportFor(HidProfile.COMPOSITE, GamepadState()).size)
+    }
+
+    @Test
+    fun `the gamepad only profile uses the thirteen byte report`() {
+        assertEquals(13, reportFor(HidProfile.GAMEPAD_ONLY, GamepadState()).size)
+    }
+
+    @Test
     fun `accepted registration waits for the status callback`() {
         assertEquals(RegisterRetryDecision.WaitForStatusCallback, registerRetryDecision(true))
     }
