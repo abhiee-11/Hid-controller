@@ -39,6 +39,16 @@ fun w3cWireBit(canonicalBit: Int): Int = when (canonicalBit) {
     else -> -1
 }
 
+/**
+ * True when the profile the user selected is not the one the host was paired with.
+ *
+ * The host caches the report descriptor at pairing time, so a profile change only takes
+ * effect after the user removes the phone and pairs it again. Until then the app has to
+ * say so, or the user sees "nothing changed" and concludes the feature is broken.
+ */
+fun profileNeedsRepair(current: HidProfile, registered: HidProfile): Boolean =
+    current != registered
+
 /** The descriptor the phone registers for the given profile. */
 fun descriptorFor(profile: HidProfile): ByteArray = when (profile) {
     HidProfile.COMPOSITE -> COMBINED_HID_DESCRIPTOR

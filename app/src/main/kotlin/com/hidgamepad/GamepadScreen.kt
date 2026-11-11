@@ -121,6 +121,7 @@ fun GamepadScreen(
     onMouseState: (MouseState) -> Unit,
     onConsumerState: (ConsumerState) -> Unit,
     onReleaseAllInputs: () -> Unit,
+    registeredProfile: HidProfile = HidProfile.COMPOSITE,
     onProfileChanged: (HidProfile) -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -470,6 +471,7 @@ fun GamepadScreen(
                     prefs.edit().putString("host_type", newType.name).apply()
                 },
                 profile = profile,
+                registeredProfile = registeredProfile,
                 onProfile = { newProfile ->
                     profile = newProfile
                     prefs.edit().putString("hid_profile", newProfile.name).apply()
@@ -596,6 +598,7 @@ private fun SettingsPanel(
     onMode: (ControllerMode) -> Unit,
     onHostType: (HostType) -> Unit,
     profile: HidProfile,
+    registeredProfile: HidProfile,
     onProfile: (HidProfile) -> Unit,
     onHaptics: (Boolean) -> Unit,
     onHapticsStrength: (Float) -> Unit,
@@ -652,6 +655,15 @@ private fun SettingsPanel(
             fontSize = 11.sp,
             color = Color(0xFFE0B75A),
         )
+        if (profileNeedsRepair(current = profile, registered = registeredProfile)) {
+            Text(
+                "Re-pair needed: the host is still using the ${profileLabel(registeredProfile)} " +
+                    "descriptor. Remove the phone on the host, tap Make discoverable here, " +
+                    "then add the phone on the host again.",
+                fontSize = 11.sp,
+                color = Color(0xFFE06A5A),
+            )
+        }
         Button(onClick = { onHaptics(!hapticsEnabled) }, modifier = Modifier.height(48.dp)) {
             Text(if (hapticsEnabled) "Haptics ON" else "Haptics OFF")
         }

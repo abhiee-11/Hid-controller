@@ -128,6 +128,7 @@ class MainActivity : ComponentActivity() {
             ) {
                 if (permissionsGranted) {
                     val status by manager.status.collectAsState()
+                    val pairedProfile by manager.pairedProfile.collectAsState()
                     GamepadScreen(
                         statusText = statusLabel(status),
                         bondedDevices = { manager.bondedDevices() },
@@ -155,6 +156,7 @@ class MainActivity : ComponentActivity() {
                         onMouseState = { state -> manager.sendMouse(state) },
                         onConsumerState = { state -> manager.sendConsumer(state) },
                         onReleaseAllInputs = { manager.releaseAllInputs() },
+                        registeredProfile = pairedProfile,
                         onProfileChanged = { newProfile -> manager.hidProfile = newProfile },
                     )
                 } else {

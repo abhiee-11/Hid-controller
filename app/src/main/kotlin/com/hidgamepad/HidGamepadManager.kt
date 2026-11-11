@@ -88,6 +88,13 @@ class HidGamepadManager(context: Context) {
             }
         }
 
+    /**
+     * The profile the host was paired with. The host caches the descriptor at pairing
+     * time, so this is what the host actually understands until the user re-pairs.
+     */
+    private val _pairedProfile = MutableStateFlow(HidProfile.COMPOSITE)
+    val pairedProfile: StateFlow<HidProfile> = _pairedProfile
+
     /** True between the stack accepting registerApp() and its status callback arriving.
      * Without this, a second start() re-registers while the first attempt is still in flight;
      * the stack rejects the duplicate and schedules a spurious retry. */
@@ -345,7 +352,12 @@ class HidGamepadManager(context: Context) {
             Log.i(TAG, "onConnectionStateChanged ${deviceName(device)} state=$state " +
                 "(${stateName(state)})")
             when (state) {
-                BluetoothProfile.STATE_CONNECTED -> refreshConnected("state connected")
+                BluetoothProfile.STATE_CONNECTED -> {
+                    // A host that connects now understands the descriptor the phone
+                    // registered, so the profile it is paired with is the current one.
+                    _pairedProfile.value = hidProfile
+                    refreshConnected("state connected")
+                }
                 BluetoothProfile.STATE_CONNECTING -> {
                     Log.i(TAG, "connecting to ${deviceName(device)}; awaiting CONNECTED before sending")
                     if (_status.value !is Status.Connected && _status.value !is Status.Connecting) {

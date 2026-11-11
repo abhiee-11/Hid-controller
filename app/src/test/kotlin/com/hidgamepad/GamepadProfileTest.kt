@@ -1,6 +1,7 @@
 package com.hidgamepad
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -115,6 +116,17 @@ class GamepadProfileTest {
         // An unrecognised stored value must fall back to the profile that has always
         // worked, not silently switch the user's pairing to a different descriptor.
         assertEquals(HidProfile.COMPOSITE, hidProfileFromStorage("nonsense"))
+    }
+
+    @Test
+    fun `a profile the host has not re-paired for is reported as pending`() {
+        // The host caches the descriptor at pairing time, so switching the profile only
+        // takes effect after the user removes and pairs the phone again. The app has to be
+        // able to say so, otherwise the user sees "nothing changed" and gives up.
+        assertTrue(profileNeedsRepair(current = HidProfile.COMPOSITE, registered = HidProfile.GAMEPAD_ONLY))
+        assertTrue(profileNeedsRepair(current = HidProfile.GAMEPAD_ONLY, registered = HidProfile.COMPOSITE))
+        assertFalse(profileNeedsRepair(current = HidProfile.GAMEPAD_ONLY, registered = HidProfile.GAMEPAD_ONLY))
+        assertFalse(profileNeedsRepair(current = HidProfile.COMPOSITE, registered = HidProfile.COMPOSITE))
     }
 
     @Test
