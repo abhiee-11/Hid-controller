@@ -112,6 +112,18 @@ selected at `registerApp` time, versus its "combo" modes.
    press — button bit 0 set, then released. The app sends what it should; the host is
    reading it with a stale descriptor.
 
+   Further proof that the host, not the app, holds the old descriptor: the HID node's
+   `DEVPKEY_Device_FirstInstallDate` is **2026-11-10 19:35:08**, hours before the profile
+   existed. Windows parsed the report descriptor once, when the device was paired, and has
+   reused that parse ever since. A freshly launched Chrome still reports the gamepad with
+   **10 axes** — the old composite's axis set (6 gamepad axes + the mouse collection's
+   axes) — even though the gamepad-only descriptor declares 6. Chrome is reading the old
+   composite descriptor, and the phone's 13-byte report does not match it.
+
+   Consequence for the tablet: the same cache rule applies, and its HID host link to the
+   phone does not form at all (`HID_HOST` connection policy 100, no `/dev/input` node for
+   the phone). It needs the same remove-and-pair-again.
+
 ## Decision
 
 Ship **two registration profiles**, chosen by the user at pairing time:
