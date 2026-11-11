@@ -299,10 +299,18 @@ fun GamepadScreen(
                                 onClick = {
                                     devicesOpen = false
                                     if (onConnect(d)) {
+                                        val label = deviceLabel(d)
                                         prefs.edit()
                                             .putString("last_host_address", safeDeviceAddress(d))
-                                            .putString("last_host_name", deviceLabel(d))
+                                            .putString("last_host_name", label)
                                             .apply()
+                                        // The gesture mapping follows the host you connect to:
+                                        // a tablet must not receive Windows chords.
+                                        val detected = hostTypeForDeviceName(label, hostType)
+                                        if (detected != hostType) {
+                                            hostType = detected
+                                            prefs.edit().putString("host_type", detected.name).apply()
+                                        }
                                     }
                                 },
                             )
@@ -449,6 +457,10 @@ fun GamepadScreen(
                 onDiscoverable = onDiscoverable,
                 onRunSetup = { settingsOpen = false; onboardingStep = 1; needsSetup = true },
                 onMode = { switchMode(it) },
+                onHostType = { newType ->
+                    hostType = newType
+                    prefs.edit().putString("host_type", newType.name).apply()
+                },
                 onHaptics = onHapticsChange,
                 onHapticsStrength = onHapticsStrengthChange,
                 onTilt = { enabled ->
@@ -568,6 +580,7 @@ private fun SettingsPanel(
     onDiscoverable: () -> Unit,
     onRunSetup: () -> Unit,
     onMode: (ControllerMode) -> Unit,
+    onHostType: (HostType) -> Unit,
     onHaptics: (Boolean) -> Unit,
     onHapticsStrength: (Float) -> Unit,
     onTilt: (Boolean) -> Unit,
@@ -600,6 +613,13 @@ private fun SettingsPanel(
                 Button(onClick = { onMode(mode) }, modifier = Modifier.height(48.dp)) { Text(modeLabel(mode)) }
             }
         }
+        Text("Host type: ${hostTitle(hostType)}", fontSize = 12.sp, color = Color(0xFFC7CDD8))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (type in HostType.entries) {
+                Button(onClick = { onHostType(type) }, modifier = Modifier.height(48.dp)) { Text(hostTitle(type)) }
+            }
+        }
+        Text("Decides what three-finger swipes send. Change it if the swipes do nothing.", fontSize = 11.sp, color = Color(0xFF9AA1B2))
         Button(onClick = { onHaptics(!hapticsEnabled) }, modifier = Modifier.height(48.dp)) {
             Text(if (hapticsEnabled) "Haptics ON" else "Haptics OFF")
         }

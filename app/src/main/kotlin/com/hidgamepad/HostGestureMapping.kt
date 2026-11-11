@@ -8,6 +8,22 @@ sealed interface HostAction {
 }
 
 /**
+ * Guesses the host type from the connected device's Bluetooth name, so a tablet gets the
+ * Android gesture mapping without the user having to re-run setup. Falls back to
+ * [current] when the name says nothing useful.
+ */
+fun hostTypeForDeviceName(name: String, current: HostType = HostType.WINDOWS): HostType {
+    val lower = name.lowercase()
+    val androidWords = listOf("tab", "tablet", "pixel", "galaxy", "android", "phone", "oneplus", "redmi", "mi ")
+    val windowsWords = listOf("desktop", "laptop", "pc", "notebook", "thinkpad", "surface")
+    return when {
+        androidWords.any { it in lower } -> HostType.ANDROID
+        windowsWords.any { it in lower } -> HostType.WINDOWS
+        else -> current
+    }
+}
+
+/**
  * Windows: Win+Tab Task View, Win+D show desktop, Alt+Left/Right history navigation.
  * Android: consumer Home/Back/Forward (HID 1.12 usages); Android has no global Forward or
  * show-desktop, so down is [HostAction.None] and forward relies on the host app honouring

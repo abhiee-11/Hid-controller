@@ -3,6 +3,7 @@ package com.hidgamepad
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -21,9 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -57,6 +56,8 @@ fun GestureTouchpad(
     val hapticsStrengthNow by rememberUpdatedState(hapticsStrength)
 
     val handler = remember { Handler(Looper.getMainLooper()) }
+    // Debug aid: shows what the recognizer produced even when no host is connected.
+    LaunchedEffect(Unit) { Log.i("HidGamepad", "GESTURE pad ready density=$density") }
     // One recognizer and one bridge for the pad's whole life: rebuilding them mid-gesture
     // would drop a held button or a held Ctrl without releasing it.
     val recognizer = remember(density) {
@@ -75,8 +76,6 @@ fun GestureTouchpad(
     LaunchedEffect(sensitivity) { recognizer.sensitivity = sensitivity }
     LaunchedEffect(hostType) { bridge.hostType = hostType }
 
-    // Virtual cursor position, driven by the same deltas the host receives.
-    var pointerPosition by remember { mutableStateOf(Offset(-1f, -1f)) }
     var fingerDown by remember { mutableStateOf(false) }
 
     LaunchedEffect(fingerDown) {
@@ -101,19 +100,6 @@ fun GestureTouchpad(
         }
     }
 
-    val arrowPath = remember {
-        Path().apply {
-            moveTo(0f, 0f)
-            lineTo(0f, 25f)
-            lineTo(7.2f, 18.8f)
-            lineTo(12f, 31f)
-            lineTo(16f, 29.2f)
-            lineTo(11.3f, 17f)
-            lineTo(19.5f, 17f)
-            close()
-        }
-    }
-
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Canvas(
             Modifier.fillMaxSize().pointerInput(Unit) {
@@ -122,11 +108,6 @@ fun GestureTouchpad(
                         val down = awaitFirstDown(requireUnconsumed = false)
                         down.consume()
                         fingerDown = true
-                        val surfaceWidth = size.width.toFloat()
-                        val surfaceHeight = size.height.toFloat()
-                        if (pointerPosition.x < 0f) {
-                            pointerPosition = Offset(surfaceWidth / 2f, surfaceHeight / 2f)
-                        }
                         val initialFrame = PadFrame(
                             timeMs = SystemClock.uptimeMillis(),
                             points = listOf(PadPoint(down.id.value, down.position.x, down.position.y)),
@@ -142,15 +123,10 @@ fun GestureTouchpad(
                                         .map { PadPoint(it.id.value, it.position.x, it.position.y) },
                                 )
                                 val actions = recognizer.frame(frame)
-                                bridge.dispatch(actions)
-                                for (action in actions) {
-                                    if (action is PadAction.Move) {
-                                        pointerPosition = Offset(
-                                            (pointerPosition.x + action.dx).coerceIn(0f, surfaceWidth - 1f),
-                                            (pointerPosition.y + action.dy).coerceIn(0f, surfaceHeight - 1f),
-                                        )
-                                    }
+                                if (actions.isNotEmpty()) {
+                                    Log.i("HidGamepad", "GESTURE actions=$actions")
                                 }
+                                bridge.dispatch(actions)
                                 if (event.changes.none { it.pressed }) break
                             }
                         } finally {
@@ -159,7 +135,8 @@ fun GestureTouchpad(
                     }
                 } catch (cancel: CancellationException) {
                     throw cancel
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    Log.e("HidGamepad", "GESTURE pointer loop failed", e)
                     fingerDown = false
                 }
             },
@@ -181,14 +158,6 @@ fun GestureTouchpad(
                     y += step
                 }
                 x += step
-            }
-            val px = if (pointerPosition.x < 0f) size.width / 2f else pointerPosition.x
-            val py = if (pointerPosition.y < 0f) size.height / 2f else pointerPosition.y
-            val fill = Color.White
-            val outline = Color(0xFF141519)
-            translate(px, py) {
-                drawPath(arrowPath, outline, alpha = 0.95f)
-                drawPath(arrowPath, fill)
             }
         }
     }
