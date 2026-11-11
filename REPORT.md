@@ -240,17 +240,24 @@ Plan: `docs/superpowers/plans/2026-11-11-hid-profiles-and-gamepad-conformance.md
 | Chrome enumerates a gamepad | **PASS** | `navigator.getGamepads()` → `{id: "HID Gamepad (Vendor: 001d Product: 0000)", connected: true, buttons: 16}`; every slot was `null` before the change |
 | The phone sends the right bytes | **PASS** | logcat `sendReport id=3 payload=[01 00 00 00 00 00 00 00 00 00 00 00 0F] length=13` on an A press, then `[00 00 …]` on release |
 | The host decodes the new descriptor | NOT YET | the Windows node still has COL01 (Keyboard), COL02 (Mouse), COL03 (Game controller) and COL04 (Consumer control) siblings — four collections, i.e. the **old** composite. The SDP cache (`…\Devices\6C40E8EB8FE0\CachedServices\0001000F`) already holds the gamepad-only descriptor, so the SDP record updated while the parsed device node did not. A host re-pair is required. |
-| Tablet enumerates the phone | NOT YET | `/dev/input/` on <TABLET_SERIAL> has no HID node from the phone; the tablet holds the old cached descriptor and its HID host link does not form |
-| Tablet button keycodes (MODE = 316) | NOT YET | requires the tablet to re-pair and enumerate first |
+| Tablet enumerates the phone | **PASS** | after the tablet re-paired, its `/dev/input/` has `event6` "vivo Y29 Keyboard", `event7` "vivo Y29 Mouse", `event8` "vivo Y29" (gamepad). `event8` carries `BTN_GAMEPAD BTN_EAST BTN_C BTN_NORTH BTN_WEST BTN_Z BTN_TL BTN_TR BTN_TL2 BTN_TR2 BTN_SELECT BTN_START BTN_MODE BTN_THUMBL BTN_THUMBR`, `ABS_X/Y/Z/RZ`, `ABS_GAS/BRAKE` and `ABS_HAT0X/Y` |
+| Tablet button keycodes (composite) | **PASS** | `getevent -lt /dev/input/event8` while pressing each on-screen control: A→`BTN_GAMEPAD`, B→`BTN_EAST`, X→`BTN_NORTH`, Y→`BTN_WEST`, L1→`BTN_TL`, R1→`BTN_TR`, SEL→`BTN_SELECT`, START→`BTN_START` |
+| Tablet d-pad and sticks | **PASS** | d-pad N→`ABS_HAT0Y -1`, E→`ABS_HAT0X +1`, S→`ABS_HAT0Y +1`, W→`ABS_HAT0X -1`; left stick→`ABS_X`; right stick→`ABS_Z`/`ABS_RZ` |
+| Tablet triggers | **PASS** | L2→`ABS_BRAKE 255`, R2→`ABS_GAS 255`, both back to 0 on release |
+| MODE/L3/R3 keycodes | NO UI CONTROL | the gamepad screen exposes no MODE/L3/R3 button, so they cannot be pressed on any host. Their bit positions (12/13/14) are covered by unit tests only; the descriptor puts them at wire bits 12/13/14, which the kernel maps to `BTN_MODE`/`BTN_THUMBL`/`BTN_THUMBR` |
 | Valorant | OUT OF SCOPE | needs a PC-side XInput translator; deferred by the user |
 
 ### User action required
 
-Both hosts must re-pair for the gamepad-only profile to take effect:
+The tablet has re-paired and now enumerates the phone correctly (see the table above). The
+**PC** still decodes the old composite descriptor, so it must re-pair for the gamepad-only
+profile to take effect there:
 
-1. On the host, remove the phone under Bluetooth settings.
+1. On the PC, remove the phone under Bluetooth settings.
 2. On the phone, tap **Make discoverable** in the app.
-3. On the host, add the phone again while the app is open and registered.
+3. On the PC, add the phone again while the app is open and registered.
+4. Re-run `navigator.getGamepads()` and press a button; the pad must report `axes.length` 6
+   and `buttons.length` 16, and the pressed index must change.
 
 ## Corrections to earlier handoff notes
 

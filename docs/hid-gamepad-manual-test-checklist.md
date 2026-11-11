@@ -16,11 +16,13 @@ Host (tablet): any tablet that can pair to a Bluetooth HID gamepad
 - [ ] Sticks snap to center on release (no drift; heartbeat keeps last stored value so residual positions persist, center is a valid state).
 - [ ] Push stick past ~8% — deadzone means tiny jitters map to 0.
 
-## Analog outputs (verify with a game or controller-tester app on the tablet)
-- [ ] Left stick: X right = +, down = + (the HID/Android gamepad convention).
-- [ ] Right stick: Z/Rz map to camera/aim.
-- [ ] L2/R2 (buttons top) = analog triggers Rx/Ry: press = 0 → 255 ramp (binary hold = max 255).
-- [ ] 16 buttons: A,B,X,Y, L1,R1, SELECT,START return distinct HID buttons 1,2,3,4,9,10,11,12.
+## Analog outputs (verified on the tablet, 2026-11-11)
+- [x] Left stick → `ABS_X` (right = +, down = +, the HID/Android gamepad convention).
+- [x] Right stick → `ABS_Z` / `ABS_RZ`.
+- [x] L2 / R2 (top strips) → `ABS_BRAKE` / `ABS_GAS`, 0 → 255 on a full press.
+- [x] Buttons, measured on the tablet: A→`BTN_GAMEPAD` (button 1), B→`BTN_EAST` (2),
+      X→`BTN_NORTH` (4), Y→`BTN_WEST` (5), L1→`BTN_TL` (7), R1→`BTN_TR` (8),
+      SEL→`BTN_SELECT` (11), START→`BTN_START` (12).
 
 ## HID profile and gamepad
 
@@ -36,10 +38,11 @@ pairing it again.** A profile change without a re-pair has no effect on the host
 | Profile | Action | Expected | Result |
 |---|---|---|---|
 | Gamepad only | Chrome: open a page that reads `navigator.getGamepads()` | one pad, 16 buttons, 6 axes | PASS (2026-11-11) |
-| Gamepad only | Press A on the phone | the host sees one button press | needs a host re-pair |
-| Gamepad only | Move the right stick | the right stick moves on the host | needs a host re-pair |
-| Composite | Re-pair the tablet | the tablet lists the phone as a gamepad | needs a tablet re-pair |
-| Composite | Press MODE on the phone | the tablet reports BUTTON_MODE (316) | needs a tablet re-pair |
+| Gamepad only | Press A on the phone | the host sees one button press | needs a PC re-pair |
+| Gamepad only | Move the right stick | the right stick moves on the host | needs a PC re-pair |
+| Composite | Re-pair the tablet | the tablet lists the phone as a gamepad | PASS (2026-11-11): `event8` "vivo Y29" with the full button/axis set |
+| Composite | Press every on-screen control | the tablet reports the expected keycode | PASS (2026-11-11): see the "Analog outputs" list above, plus d-pad → `ABS_HAT0X/Y` |
+| Composite | Press MODE on the phone | the tablet reports `BUTTON_MODE` (316) | N/A — the gamepad screen has no MODE button |
 
 Re-pair steps: on the host, remove the phone under Bluetooth settings; on the phone, tap
 **Make discoverable**; on the host, add the phone again while the app is open.

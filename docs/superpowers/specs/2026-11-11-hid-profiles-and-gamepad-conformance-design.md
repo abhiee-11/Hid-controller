@@ -196,7 +196,7 @@ Two measurements decide success, both on real hosts:
 |---|---|---|
 | Chrome enumerates a gamepad | PASS | `navigator.getGamepads()` → `{id: "HID Gamepad (Vendor: 001d Product: 0000)", connected: true, buttons: 16}`; before the change every slot was `null`. |
 | Phone sends the right bytes | PASS | logcat `sendReport id=3 payload=[01 00 ... 0F] length=13` on an A press, then `[00 00 ...]` on release. |
-| Host decodes the new descriptor | NOT YET | The Windows node still has COL01–COL04 siblings (the old composite). A host re-pair is required. |
-| Tablet enumerates the phone | NOT YET | `/dev/input/` on <TABLET_SERIAL> has no HID node from the phone; the tablet holds the old cached descriptor. |
-| Button keycodes on the tablet | NOT YET | Requires the tablet to re-pair and enumerate first. |
-| MODE/L3/R3 bit order | FIXED, not host-verified | Correct per the tablet's `Generic.kl` and the kernel's `hid-input` mapping; needs the tablet re-pair to observe. |
+| Host decodes the new descriptor | PARTIAL | The tablet now decodes it (below). The Windows node still has COL01–COL04 siblings (the old composite); the PC needs a re-pair. |
+| Tablet enumerates the phone | PASS | After the tablet re-paired, `/dev/input/event8` "vivo Y29" carries the gamepad buttons, `ABS_X/Y/Z/RZ`, `ABS_GAS/BRAKE` and `ABS_HAT0X/Y`; `event6`/`event7` are the keyboard and mouse. |
+| Button keycodes on the tablet | PASS | A→`BTN_GAMEPAD`, B→`BTN_EAST`, X→`BTN_NORTH`, Y→`BTN_WEST`, L1→`BTN_TL`, R1→`BTN_TR`, SEL→`BTN_SELECT`, START→`BTN_START`; d-pad → `ABS_HAT0X/Y`; sticks → `ABS_X`/`ABS_Z`/`ABS_RZ`; L2→`ABS_BRAKE 255`, R2→`ABS_GAS 255`. |
+| MODE/L3/R3 bit order | FIXED, no UI control | Correct per the tablet's `Generic.kl` and the kernel's `hid-input` mapping. The gamepad screen exposes no MODE/L3/R3 button, so the mapping cannot be pressed on a host; unit tests cover the bits. |
