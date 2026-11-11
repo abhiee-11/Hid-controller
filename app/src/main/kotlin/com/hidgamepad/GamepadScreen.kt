@@ -99,6 +99,12 @@ private fun hostTitle(hostType: HostType): String = when (hostType) {
     HostType.ANDROID -> "Android phone or tablet"
 }
 
+/** Names the HID collections a profile registers, so the choice is legible. */
+fun profileLabel(profile: HidProfile): String = when (profile) {
+    HidProfile.COMPOSITE -> "Keyboard + mouse + gamepad"
+    HidProfile.GAMEPAD_ONLY -> "Gamepad only"
+}
+
 
 @Composable
 fun GamepadScreen(
@@ -115,12 +121,14 @@ fun GamepadScreen(
     onMouseState: (MouseState) -> Unit,
     onConsumerState: (ConsumerState) -> Unit,
     onReleaseAllInputs: () -> Unit,
+    onProfileChanged: (HidProfile) -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val prefs = remember { context.getSharedPreferences("hid_gamepad", Context.MODE_PRIVATE) }
     var hostType by remember { mutableStateOf(hostTypeFromStorage(prefs.getString("host_type", null))) }
     var controllerMode by remember { mutableStateOf(controllerModeFromStorage(prefs.getString("controller_mode", null))) }
+    var profile by remember { mutableStateOf(hidProfileFromStorage(prefs.getString("hid_profile", null))) }
     var mouseSensitivity by remember { mutableStateOf(prefs.getFloat("mouse_sensitivity", 1f)) }
     var needsSetup by remember {
         mutableStateOf(needsOnboarding(prefs.getBoolean("setup_complete", false), prefs.getString("last_host_address", null)))
@@ -461,6 +469,12 @@ fun GamepadScreen(
                     hostType = newType
                     prefs.edit().putString("host_type", newType.name).apply()
                 },
+                profile = profile,
+                onProfile = { newProfile ->
+                    profile = newProfile
+                    prefs.edit().putString("hid_profile", newProfile.name).apply()
+                    onProfileChanged(newProfile)
+                },
                 onHaptics = onHapticsChange,
                 onHapticsStrength = onHapticsStrengthChange,
                 onTilt = { enabled ->
@@ -581,6 +595,8 @@ private fun SettingsPanel(
     onRunSetup: () -> Unit,
     onMode: (ControllerMode) -> Unit,
     onHostType: (HostType) -> Unit,
+    profile: HidProfile,
+    onProfile: (HidProfile) -> Unit,
     onHaptics: (Boolean) -> Unit,
     onHapticsStrength: (Float) -> Unit,
     onTilt: (Boolean) -> Unit,
@@ -620,6 +636,22 @@ private fun SettingsPanel(
             }
         }
         Text("Decides what three-finger swipes send. Change it if the swipes do nothing.", fontSize = 11.sp, color = Color(0xFF9AA1B2))
+        Text("HID profile: ${profileLabel(profile)}", fontSize = 12.sp, color = Color(0xFFC7CDD8))
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (type in HidProfile.entries) {
+                Button(onClick = { onProfile(type) }, modifier = Modifier.height(48.dp)) { Text(profileLabel(type)) }
+            }
+        }
+        Text(
+            "Gamepad only is what games need: a phone that also acts as a keyboard and mouse is not recognised as a gamepad by every host.",
+            fontSize = 11.sp,
+            color = Color(0xFF9AA1B2),
+        )
+        Text(
+            "Changing the profile needs a re-pair: the host caches the HID descriptor at pairing time.",
+            fontSize = 11.sp,
+            color = Color(0xFFE0B75A),
+        )
         Button(onClick = { onHaptics(!hapticsEnabled) }, modifier = Modifier.height(48.dp)) {
             Text(if (hapticsEnabled) "Haptics ON" else "Haptics OFF")
         }

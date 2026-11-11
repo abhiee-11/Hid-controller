@@ -122,8 +122,24 @@ class HidGamepadManager(context: Context) {
         -1
     }
 
+    /**
+     * Loads the profile the user chose, so a registration started by the foreground
+     * service - before the settings screen is ever opened - uses the right descriptor.
+     */
+    private fun loadStoredProfile() {
+        val stored = appContext
+            .getSharedPreferences("hid_gamepad", Context.MODE_PRIVATE)
+            .getString("hid_profile", null)
+        val profile = hidProfileFromStorage(stored)
+        if (profile != hidProfile) {
+            Log.i(TAG, "restoring stored HID profile: $profile")
+            hidProfile = profile
+        }
+    }
+
     /** Fetch the HID DEVICE proxy, then register the app (SDP record + descriptor). */
     fun start() {
+        loadStoredProfile()
         val a = adapter ?: run {
             Log.w(TAG, "start(): no Bluetooth adapter — HID device unsupported")
             _status.value = Status.Unsupported

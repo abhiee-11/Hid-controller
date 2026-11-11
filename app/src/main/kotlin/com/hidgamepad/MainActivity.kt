@@ -155,6 +155,7 @@ class MainActivity : ComponentActivity() {
                         onMouseState = { state -> manager.sendMouse(state) },
                         onConsumerState = { state -> manager.sendConsumer(state) },
                         onReleaseAllInputs = { manager.releaseAllInputs() },
+                        onProfileChanged = { newProfile -> manager.hidProfile = newProfile },
                     )
                 } else {
                     Column(

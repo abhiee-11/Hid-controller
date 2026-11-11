@@ -94,6 +94,20 @@ class GamepadProfileTest {
     }
 
     @Test
+    fun `profile names are stable across versions`() {
+        // The storage key is what a user's paired host was registered with; renaming an enum
+        // entry would silently re-pair them onto the wrong descriptor.
+        assertEquals("COMPOSITE", HidProfile.COMPOSITE.name)
+        assertEquals("GAMEPAD_ONLY", HidProfile.GAMEPAD_ONLY.name)
+    }
+
+    @Test
+    fun `profile labels name the collections the profile carries`() {
+        assertEquals("Keyboard + mouse + gamepad", profileLabel(HidProfile.COMPOSITE))
+        assertEquals("Gamepad only", profileLabel(HidProfile.GAMEPAD_ONLY))
+    }
+
+    @Test
     fun `profile round trips through storage`() {
         assertEquals(HidProfile.COMPOSITE, hidProfileFromStorage(null))
         assertEquals(HidProfile.COMPOSITE, hidProfileFromStorage("COMPOSITE"))
