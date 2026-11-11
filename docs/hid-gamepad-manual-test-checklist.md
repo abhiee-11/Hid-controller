@@ -37,7 +37,7 @@ pairing it again.** A profile change without a re-pair has no effect on the host
 
 | Profile | Action | Expected | Result |
 |---|---|---|---|
-| Gamepad only | Chrome: open a page that reads `navigator.getGamepads()` | one pad, 16 buttons, 6 axes | PASS (2026-11-11) |
+| Gamepad only | Chrome: open a page that reads `navigator.getGamepads()` | one pad, 16 buttons, **6** axes | unverified — the composite measures 10 axes; the 6-axis gamepad-only target has not been re-paired yet |
 | Gamepad only | Press A on the phone | the host sees one button press | needs a PC re-pair |
 | Gamepad only | Move the right stick | the right stick moves on the host | needs a PC re-pair |
 | Composite | Re-pair the tablet | the tablet lists the phone as a gamepad | PASS (2026-11-11): `event8` "vivo Y29" with the full button/axis set |

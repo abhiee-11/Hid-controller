@@ -141,7 +141,7 @@ val GAMEPAD_ONLY_DESCRIPTOR: ByteArray = intArrayOf(
         0x09, 0x33,       //   Usage (Rx)
         0x09, 0x34,       //   Usage (Ry)
         0x16, 0x80, 0x80, //   Logical Minimum (-32768)
-        0x27, 0xFF, 0x7F, //   Logical Maximum (32767)
+        0x26, 0xFF, 0x7F, //   Logical Maximum (32767)
         0x75, 0x10,       //   Report Size (16)
         0x95, 0x04,       //   Report Count (4)
         0x81, 0x02,       //   Input (Data, Variable, Absolute)

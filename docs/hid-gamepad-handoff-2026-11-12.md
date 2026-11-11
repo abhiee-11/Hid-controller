@@ -5,9 +5,13 @@ Pick this up tomorrow. Everything below is measured, not inferred, unless marked
 
 ## Where things stand
 
-- Branch `feat/touchpad-gestures`, head `b3942e4`, local only (never pushed), not merged.
+- Branch `feat/touchpad-gestures`, local only (never pushed), not merged.
 - Build + tests: `.\gradlew.bat --console=plain testDebugUnitTest assembleDebug`
-  → **134 tests, 0 failures**.
+  → **135 tests, 0 failures**.
+- **A blocker found in review was fixed at the end of the session:** the GAMEPAD_ONLY
+  descriptor wrote `0x27` (a 4-byte HID item) for Logical Maximum and swallowed the next item,
+  so the report parsed to 44 bits instead of 104. Now `0x26`, with a parse-based regression
+  test. See "Review findings".
 - The phone app is on `hid_profile=COMPOSITE`, `controller_mode=GAMEPAD`.
 - Both hosts have re-paired and decode the current composite descriptor.
 
@@ -92,4 +96,83 @@ cleaned — the recipes below are what matter.
 
 ## Review findings
 
-_To be filled in from the whole-branch review subagent before/after shutdown._
+Two reviews fed this: my own read of `f6f8923..b3942e4`, and the whole-branch review subagent
+(which delivered after all). De-duplicated and ranked. The subagent found the blocker; my
+review missed it.
+
+### Fixed in this session
+
+- **blocker — `GamepadProfiles.kt:144` — the GAMEPAD_ONLY descriptor was unparseable.**
+  It wrote `0x27, 0xFF, 0x7F` for Logical Maximum. HID short-item size code 3 means **four**
+  data bytes, so the parser swallowed `FF 7F 75 10` and ate the following `Report Size (16)`
+  item. The report parsed to 16+4+16+4+4 = **44 bits (5.5 bytes, not byte-aligned)** instead
+  of 104 bits (13 bytes), so no host could parse the advertised 13-byte report.
+  Fixed to `0x26, 0xFF, 0x7F` (2-byte size, matching the composite's convention at
+  `GamepadState.kt:388`/`:400`).
+- **high — the descriptor was never parsed by a test.** `GamepadProfileTest` only did
+  substring checks (`contains("75 10")`), which cannot catch a short-item size error — which
+  is why the blocker shipped. Added
+  `the gamepad-only descriptor parses to exactly a thirteen byte report`, reusing the existing
+  short-item walker (now `internal` in `GamepadStateTest.kt`). Red first:
+  `expected:<104> but was:<44>`; green after the fix. Suite is now **135 tests, 0 failures**.
+
+### Open — ranked
+
+1. **high — the re-pair warning is defeated, and reports use the wrong profile.**
+   `HidGamepadManager.kt:358` sets `_pairedProfile.value = hidProfile` on `STATE_CONNECTED`,
+   but the descriptor in force is the one captured at the last `registerApp()`
+   (`:402-403`), and a profile switch does not re-register. So after a switch the app claims
+   the host understands the new profile and hides the warning while the host still holds the
+   old descriptor. Worse, `reportFor(hidProfile, …)` at `:503`, `:610` and `:630` then encodes
+   a 13-byte gamepad-only report for a host that registered the 9-byte composite — same report
+   ID, so the host mis-parses it as garbage rather than rejecting it.
+   Fix: record the profile used at register time, expose *that* to the warning, and encode with
+   it. `_pairedProfile` is also never updated on the `setActiveHost`/`refreshConnected` path
+   and is initialised to `COMPOSITE` regardless of the stored profile.
+2. **high — the `hidProfile` setter never re-registers.** `HidGamepadManager.kt:80-89` only
+   logs. The plan required the setter to re-register when the value changes while registered
+   (plan lines 449/488/548), and `registerApp()` early-returns while `appRegistered` is true,
+   so a live profile change never publishes the new descriptor. Either implement the
+   unregister/re-register or change the plan and the UI text to say a restart is required.
+3. **medium — GAMEPAD_ONLY wire order is wrong on Android/Linux hosts.**
+   `GamepadProfiles.kt:27-40` (`w3cWireBit`) maps X→2, Y→3, L1→4, R1→5, SEL→8, START→9. That
+   is right for a browser (positional index), but the kernel maps the same positions to
+   `BTN_C, BTN_NORTH, BTN_WEST, BTN_Z, BTN_TL2, BTN_TR2`. Measured proof the kernel is
+   positional: the composite (canonical order) produced the correct keycodes for all eight
+   buttons on the tablet. Fix: emit canonical order, or restrict the profile to browser hosts.
+   Related: `w3cWireBit` returns -1 for unmapped canonical bits and the encoder drops them
+   silently — the two profiles' button sets differ with no documentation.
+4. **medium — MODE at wire bit 12 collides with the W3C D-pad slot.** In the W3C standard
+   layout 12–15 are the D-pad and 16 is Guide/MODE, and the descriptor declares only 16
+   buttons, so there is no index 16. The D-pad is also a hat, not buttons 12–15. Consequence:
+   GAMEPAD_ONLY can never be `mapping: "standard"`. Fix: declare 17 buttons and put MODE at
+   16, or stop calling the profile W3C-standard.
+5. **medium — GAMEPAD_ONLY has never been exercised by a real host.** The PC measurement was
+   taken on the composite (10 axes = 6 gamepad + 4 mouse). Before claiming the profile works,
+   select it, re-pair the PC, and check `axes.length == 6` and `buttons.length == 16`.
+6. **medium — `HAT_NEUTRAL` contradicts the spec.** Code ships 15 (`GamepadState.kt:30`,
+   `GamepadProfiles.kt:100`), justified by the kernel clamping an out-of-range hat to centred
+   — sound for Linux/Android, but the spec's own table (`spec:162`) says "8 = centred", and 8
+   is the HID null value for a Null-State hat with Logical Max 7. Write 8 for the gamepad-only
+   profile or record the deviation in the spec table.
+7. **low — `GAMEPAD_ONLY_REPORT_SIZE` is dead code** (`GamepadProfiles.kt:21`): declared, never
+   used, while the encoder hardcodes 13. Use it, or delete it.
+8. **low — doc nits.** `REPORT.md` said 133 tests (now 135);
+   `docs/hid-gamepad-manual-test-checklist.md` claims PASS for "one pad, 16 buttons, 6 axes"
+   but the measured pad had **10** axes — 6 is the unverified gamepad-only target.
+
+### Not defects, for the record
+
+- `axisWord`'s `and 0xFFFF` on a negative `Int` yields the right two's-complement bytes.
+- The 100 ms heartbeat resending only the gamepad report is correct — a relative mouse report
+  must never be replayed.
+- `subclassFor` is correct: `SUBCLASS1_NONE = 0`, `SUBCLASS2_GAMEPAD = 2`.
+
+### Not yet reviewed
+
+- `GamepadScreen.kt` gesture/d-pad wiring beyond the settings row, and `Joystick.kt` hat
+  emission (0/2/4/6 + odd diagonals) against the descriptor's declared 0–7 range.
+- Test coverage for the setter re-register behaviour and for `reportFor`/`descriptorFor`
+  switching mid-session.
+- Palm/large-contact filtering in `TouchpadGestures.kt` (only the `maxPoints == 3` guard at
+  lines 235 and 274) — identified, not written up.

@@ -95,6 +95,20 @@ class GamepadProfileTest {
     }
 
     @Test
+    fun `the gamepad-only descriptor parses to exactly a thirteen byte report`() {
+        // A byte-level parse catches short-item size mistakes that substring checks cannot:
+        // 0x27 is a four-byte item, so it would swallow the following Report Size byte.
+        val summary = parseDescriptor(GAMEPAD_ONLY_DESCRIPTOR)
+        assertEquals(
+            GAMEPAD_ONLY_REPORT_SIZE * 8,
+            summary.bitsFor(GAMEPAD_REPORT_ID),
+        )
+        val wide = summary.fieldsFor(GAMEPAD_REPORT_ID).filter { it.reportSize == 16 }
+        assertEquals("one sixteen-bit field", 1, wide.size)
+        assertEquals("four sixteen-bit axes", 4, wide[0].reportCount)
+    }
+
+    @Test
     fun `profile names are stable across versions`() {
         // The storage key is what a user's paired host was registered with; renaming an enum
         // entry would silently re-pair them onto the wrong descriptor.

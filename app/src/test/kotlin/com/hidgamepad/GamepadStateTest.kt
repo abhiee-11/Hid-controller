@@ -7,7 +7,7 @@ import org.junit.Test
 
 private fun ByteArray.toHexString(): String = joinToString("") { "%02X ".format(it).padEnd(3) }.let { it }
 
-private data class HidField(
+internal data class HidField(
     val reportSize: Int,
     val reportCount: Int,
     val flags: Int,
@@ -23,7 +23,7 @@ private data class HidField(
     val isConstant: Boolean get() = (flags and 0x01) != 0
 }
 
-private data class DescriptorSummary(
+internal data class DescriptorSummary(
     val inputBits: Int,
     val reportIdItemCount: Int,
     val reportIds: List<Int>,
@@ -37,7 +37,7 @@ private data class DescriptorSummary(
 }
 
 /** Small test-only HID short-item walker that totals Input item payloads. */
-private fun parseDescriptor(descriptor: ByteArray): DescriptorSummary {
+internal fun parseDescriptor(descriptor: ByteArray): DescriptorSummary {
     val bytes = descriptor.map { it.toInt() and 0xFF }
     var i = 0
     var usagePage = 0

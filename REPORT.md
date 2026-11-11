@@ -236,7 +236,7 @@ Plan: `docs/superpowers/plans/2026-11-11-hid-profiles-and-gamepad-conformance.md
 
 | Check | Result | Evidence |
 |---|---|---|
-| Unit tests | PASS | `gradlew testDebugUnitTest` → 133 tests, 0 failures (2026-11-11 22:0x) |
+| Unit tests | PASS | `gradlew testDebugUnitTest` → 135 tests, 0 failures (2026-11-12) |
 | Chrome enumerates a gamepad | **PASS** | `navigator.getGamepads()` → `{id: "HID Gamepad (Vendor: 001d Product: 0000)", connected: true, buttons: 16}`; every slot was `null` before the change |
 | The phone sends the right bytes | **PASS** | logcat `sendReport id=3 payload=[01 00 00 00 00 00 00 00 00 00 00 00 0F] length=13` on an A press, then `[00 00 …]` on release |
 | The host decodes the new descriptor | **PASS** | the PC was re-paired (`DEVPKEY_Device_FirstInstallDate` 2026-11-11 23:53:21) and now exposes a single `Bluetooth HID Device` node — the old COL01 (Keyboard) / COL02 (Mouse) / COL03 (Game controller) / COL04 (Consumer control) siblings are gone |
