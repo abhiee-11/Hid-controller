@@ -387,4 +387,25 @@ class GamepadStateTest {
         // each mask must land in the 16-bit button area (bytes 0-1)
         assertEquals(0, masks.sum() ushr 16)
     }
+
+    @Test
+    fun `mode l3 and r3 use the android positional bits`() {
+        // The Linux hid-input driver maps a gamepad button whose usage is <= 0x0f to
+        // BTN_GAMEPAD + usage - 1, so button N (1-based) lands on Linux code 303 + N.
+        // The tablet's Generic.kl maps 304 -> BUTTON_A .. 316 -> BUTTON_MODE,
+        // 317 -> BUTTON_THUMBL (L3), 318 -> BUTTON_THUMBR (R3). So the report bit
+        // for a button is (its Linux code) - 304.
+        assertEquals(12, Btn.MODE)   // 316 - 304
+        assertEquals(13, Btn.L3)     // 317 - 304
+        assertEquals(14, Btn.R3)     // 318 - 304
+    }
+
+    @Test
+    fun `every android button bit is distinct`() {
+        val used = listOf(
+            Btn.A, Btn.B, Btn.X, Btn.Y, Btn.L1, Btn.R1,
+            Btn.SELECT, Btn.START, Btn.MODE, Btn.L3, Btn.R3,
+        )
+        assertEquals(used.size, used.toSet().size)
+    }
 }

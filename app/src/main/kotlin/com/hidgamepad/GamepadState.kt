@@ -78,9 +78,9 @@ object Btn {
     const val R1 = 7
     const val SELECT = 10
     const val START = 11
-    const val MODE = 13
-    const val L3 = 14
-    const val R3 = 12
+    const val MODE = 12
+    const val L3 = 13
+    const val R3 = 14
 }
 
 /** -1..1 -> signed byte -127..127 (never -128). */
