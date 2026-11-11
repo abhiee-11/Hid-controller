@@ -33,7 +33,6 @@ const val SCROLL_STEP_DP = 20f
 const val PINCH_START_DP = 12f
 const val PINCH_STEP_DP = 15f
 const val SWIPE_DISTANCE_DP = 40f
-const val SETTLE_MS = 40L
 
 /**
  * Pure trackpad gesture state machine: pointer frames in, [PadAction]s out. No Android
@@ -61,6 +60,7 @@ class TouchpadGestureRecognizer(
     private var lastX = 0f
     private var lastY = 0f
     private var travel = 0f
+    private var peakTravel = 0f
     private var swipeDx = 0f
     private var swipeDy = 0f
     private val startXById = mutableMapOf<Long, Float>()
@@ -128,6 +128,7 @@ class TouchpadGestureRecognizer(
         lastX = startX
         lastY = startY
         travel = 0f
+        peakTravel = 0f
         swipeDx = 0f
         swipeDy = 0f
         startXById.clear()
@@ -150,8 +151,13 @@ class TouchpadGestureRecognizer(
     private fun update(nowMs: Long, points: List<PadPoint>, out: MutableList<PadAction>) {
         maxPoints = maxOf(maxPoints, points.size)
         if (!familyLocked) {
+            // The family follows the fingers that are actually down, and may still be
+            // upgraded while the gesture is a tap candidate. It is committed by the first
+            // *classified* gesture (drag, scroll, pinch, swipe), or once the tap window has
+            // passed. A fixed 40 ms settle was wrong: on a touchscreen the second finger
+            // routinely lands well after that, and the gesture would freeze at one finger.
             family = familyFor(maxPoints)
-            if (nowMs - startMs >= SETTLE_MS) familyLocked = true
+            if (nowMs - startMs > TAP_TIMEOUT_MS) familyLocked = true
         }
         val cx = centroidX(points)
         val cy = centroidY(points)
@@ -171,6 +177,7 @@ class TouchpadGestureRecognizer(
             if (d > worst) worst = d
         }
         travel = worst
+        if (worst > peakTravel) peakTravel = worst
         if (points.size != lastCount) {
             // A finger joining or leaving is a discontinuity, not user movement.
             lastCount = points.size
@@ -255,9 +262,12 @@ class TouchpadGestureRecognizer(
             out += PadAction.ZoomEnd
         } else if (dragHeld) {
             out += PadAction.Button(1, false)
-        } else if (lastCount == maxPoints && nowMs - startMs <= TAP_TIMEOUT_MS && travel <= TAP_SLOP_DP * density) {
-            // A tap only fires when every finger that took part lifts together; a finger that
-            // left earlier turned this into a different gesture.
+        } else if (nowMs - startMs <= TAP_TIMEOUT_MS && peakTravel <= TAP_SLOP_DP * density) {
+            // The tap's finger count is the number of fingers that were down together at the
+            // peak of the gesture. Fingers never lift in the same frame on a touchscreen, so
+            // requiring the last count to equal the peak would discard every real tap.
+            // peakTravel (not travel) is the test: a finger that moved and then lifted must
+            // not be able to erase its own movement by leaving the frame.
             val button = when (family) {
                 Family.ONE -> if (dragClassified) 0 else 1
                 Family.TWO -> if (scrollClassified) 0 else 2
@@ -292,6 +302,7 @@ class TouchpadGestureRecognizer(
         maxPoints = 0
         lastCount = 0
         travel = 0f
+        peakTravel = 0f
         swipeDx = 0f
         swipeDy = 0f
         startXById.clear()

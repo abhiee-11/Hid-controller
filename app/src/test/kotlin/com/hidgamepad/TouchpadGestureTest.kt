@@ -265,12 +265,44 @@ class TouchpadGestureTest {
     }
 
     @Test
-    fun `lifting one finger before the tap emits nothing`() {
+    fun `lifting one finger early and holding the other past the tap window does not click`() {
+        // The finger that stays down turns the gesture into a hold, not a tap.
         val r = recog()
         r.frame(fr(0, pt(1, 100f, 200f), pt(2, 110f, 200f)))
         r.frame(fr(50, pt(1, 100f, 200f), pt(2, 110f, 200f)))
         assertEquals(emptyList<PadAction>(), r.frame(fr(70, pt(1, 100f, 200f))))
-        assertEquals(emptyList<PadAction>(), r.frame(fr(100)))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(300)))
+    }
+
+    @Test
+    fun `second finger landing after the settle window is still a two finger gesture`() {
+        // Real hardware: one finger lands, jitters a few pixels, and the second finger
+        // arrives well after the 40 ms settle window. The family must still become TWO.
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f)))
+        r.frame(fr(50, pt(1, 103f, 200f)))
+        r.frame(fr(80, pt(1, 103f, 200f), pt(2, 140f, 200f)))
+        assertEquals(listOf(PadAction.Click(2)), r.frame(fr(140)))
+    }
+
+    @Test
+    fun `two finger tap with a staggered lift is still a right click`() {
+        // Fingers never leave in the same frame on a touchscreen.
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        r.frame(fr(50, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(70, pt(1, 100f, 200f))))
+        assertEquals(listOf(PadAction.Click(2)), r.frame(fr(100)))
+    }
+
+    @Test
+    fun `a finger that lifts early while the other keeps moving does not click`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        r.frame(fr(50, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(70, pt(1, 100f, 200f))))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(100, pt(1, 180f, 200f))))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(140)))
     }
 
     @Test

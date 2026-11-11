@@ -90,13 +90,18 @@ Thresholds (named constants, dp-scaled by `densityScale`): tap â‰¤ 220 ms and â‰
 double-tap window 300 ms; drag-hold arming 250 ms; scroll start 10 dp; pinch start 12 dp
 of finger-distance change; swipe 40 dp; gesture settle 40 ms.
 
-Settle: the family is chosen from the finger count 40 ms after the first touch-down, or
-earlier if travel passes the tap threshold. Before settling the family may still be
-upgraded by extra fingers landing (two-finger scroll started a few ms apart still reads as
-two fingers). Once classified, the family is locked until every finger lifts.
+Settle: the family follows the fingers that are actually down, and may still be upgraded by
+extra fingers landing while the gesture is still a tap candidate (two-finger scroll started
+a few ms apart still reads as two fingers). The family is committed by the first *classified*
+gesture (drag, scroll, pinch, swipe), or once the tap window has passed. There is no fixed
+timer: on a touchscreen the second finger routinely lands well after 40 ms, and a timer
+would freeze the gesture at one finger. Once classified, the family is locked until every
+finger lifts.
 
-Rules, in precedence order. The finger count at gesture start selects the family, and a
-classified gesture holds until every finger lifts:
+Rules, in precedence order. The peak finger count of the gesture selects the family, and a
+classified gesture holds until every finger lifts. Fingers never leave in the same frame on
+a touchscreen, so a tap is judged by the peak travel of the whole gesture, not by whether the
+last fingers left together:
 
 | Fingers | Gesture | Output |
 |---|---|---|
