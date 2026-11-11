@@ -239,7 +239,10 @@ Plan: `docs/superpowers/plans/2026-11-11-hid-profiles-and-gamepad-conformance.md
 | Unit tests | PASS | `gradlew testDebugUnitTest` → 133 tests, 0 failures (2026-11-11 22:0x) |
 | Chrome enumerates a gamepad | **PASS** | `navigator.getGamepads()` → `{id: "HID Gamepad (Vendor: 001d Product: 0000)", connected: true, buttons: 16}`; every slot was `null` before the change |
 | The phone sends the right bytes | **PASS** | logcat `sendReport id=3 payload=[01 00 00 00 00 00 00 00 00 00 00 00 0F] length=13` on an A press, then `[00 00 …]` on release |
-| The host decodes the new descriptor | NOT YET | the Windows node still has COL01 (Keyboard), COL02 (Mouse), COL03 (Game controller) and COL04 (Consumer control) siblings — four collections, i.e. the **old** composite. The SDP cache (`…\Devices\6C40E8EB8FE0\CachedServices\0001000F`) already holds the gamepad-only descriptor, so the SDP record updated while the parsed device node did not. A host re-pair is required. |
+| The host decodes the new descriptor | **PASS** | the PC was re-paired (`DEVPKEY_Device_FirstInstallDate` 2026-11-11 23:53:21) and now exposes a single `Bluetooth HID Device` node — the old COL01 (Keyboard) / COL02 (Mouse) / COL03 (Game controller) / COL04 (Consumer control) siblings are gone |
+| Chrome reads the composite pad | **PASS** | `navigator.getGamepads()` → one pad, `id: "HID Gamepad (Vendor: 001d Product: 0000)"`, 16 buttons, 10 axes. Holding A sets `buttons[0]=1` |
+| Chrome button indices | **PASS, `mapping: ""`** | raw Android positional order: A→0, B→1, X→3, Y→4, L1→6, R1→7, SEL→10, START→11. Axes: L-stick→`axes[0]`, R-stick→`axes[2]`/`axes[5]`, L2→`axes[4]`, R2→`axes[3]`, d-pad→`axes[9]`. The pad is non-standard, so a game that requires the W3C standard layout still needs the GAMEPAD_ONLY profile |
+| Chrome freezes the Gamepad API in a background tab | measured | while the probe tab was `hidden`/unfocused every button read 0; `Emulation.setFocusEmulationEnabled` (or a foreground tab) is required before reading `navigator.getGamepads()` |
 | Tablet enumerates the phone | **PASS** | after the tablet re-paired, its `/dev/input/` has `event6` "vivo Y29 Keyboard", `event7` "vivo Y29 Mouse", `event8` "vivo Y29" (gamepad). `event8` carries `BTN_GAMEPAD BTN_EAST BTN_C BTN_NORTH BTN_WEST BTN_Z BTN_TL BTN_TR BTN_TL2 BTN_TR2 BTN_SELECT BTN_START BTN_MODE BTN_THUMBL BTN_THUMBR`, `ABS_X/Y/Z/RZ`, `ABS_GAS/BRAKE` and `ABS_HAT0X/Y` |
 | Tablet button keycodes (composite) | **PASS** | `getevent -lt /dev/input/event8` while pressing each on-screen control: A→`BTN_GAMEPAD`, B→`BTN_EAST`, X→`BTN_NORTH`, Y→`BTN_WEST`, L1→`BTN_TL`, R1→`BTN_TR`, SEL→`BTN_SELECT`, START→`BTN_START` |
 | Tablet d-pad and sticks | **PASS** | d-pad N→`ABS_HAT0Y -1`, E→`ABS_HAT0X +1`, S→`ABS_HAT0Y +1`, W→`ABS_HAT0X -1`; left stick→`ABS_X`; right stick→`ABS_Z`/`ABS_RZ` |
@@ -249,15 +252,10 @@ Plan: `docs/superpowers/plans/2026-11-11-hid-profiles-and-gamepad-conformance.md
 
 ### User action required
 
-The tablet has re-paired and now enumerates the phone correctly (see the table above). The
-**PC** still decodes the old composite descriptor, so it must re-pair for the gamepad-only
-profile to take effect there:
-
-1. On the PC, remove the phone under Bluetooth settings.
-2. On the phone, tap **Make discoverable** in the app.
-3. On the PC, add the phone again while the app is open and registered.
-4. Re-run `navigator.getGamepads()` and press a button; the pad must report `axes.length` 6
-   and `buttons.length` 16, and the pressed index must change.
+Both hosts have now re-paired and decode the current composite descriptor (see the table
+above). The remaining optional step is for a host that demands the **W3C standard layout**:
+select the **Gamepad only** profile on the phone and re-pair that host again, because the
+composite pad reports `mapping: ""`.
 
 ## Corrections to earlier handoff notes
 
