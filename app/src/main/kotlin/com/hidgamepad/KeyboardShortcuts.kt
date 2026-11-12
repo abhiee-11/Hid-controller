@@ -16,6 +16,9 @@ sealed interface KeyAction {
      * HID usage for Fn, so the host can never see it.
      */
     data object Fn : KeyAction
+
+    /** The RGB key: taps toggle the backlight, holding 500 ms steps to the next effect. Never sent on the wire. */
+    data object Rgb : KeyAction
 }
 
 /** One key on the keyboard grid. */
@@ -69,14 +72,16 @@ fun keyboardRows(): List<List<KeyCap>> = listOf(
         cap("B", KeyUsage.B), cap("N", KeyUsage.N), cap("M", KeyUsage.M),
         cap("Alt", KeyAction.Modifier(MOD_LEFT_ALT)),
     ),
-    // Fn sits at the bottom left, like a laptop; Caps next, then Win, Space and the arrows.
+    // Fn sits at the bottom left, like a laptop; RGB next to it (tap toggles the backlight,
+    // 500 ms hold steps to the next effect), then Caps and Win, Space and the arrows.
     // The arrow keys are narrow so Space gets most of the row. Caps is a plain HID CapsLock
     // usage: the host toggles its own caps state and reports it back on the LED output report.
     listOf(
         KeyCap("Fn", KeyAction.Fn),
+        KeyCap("RGB", KeyAction.Rgb),
         cap("Caps", KeyUsage.CAPSLOCK),
         cap("Win", KeyAction.Modifier(MOD_LEFT_GUI)),
-        cap("Space", KeyUsage.SPACE, 2f),
+        cap("Space", KeyUsage.SPACE, 1.5f),
         cap("\u2190", KeyUsage.LEFT, 0.5f), cap("\u2191", KeyUsage.UP, 0.5f),
         cap("\u2193", KeyUsage.DOWN, 0.5f), cap("\u2192", KeyUsage.RIGHT, 0.5f),
     ),

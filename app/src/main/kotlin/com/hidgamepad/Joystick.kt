@@ -11,6 +11,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,8 +51,9 @@ import kotlin.math.roundToInt
 
 // The palette for the on-screen controls lives in PadColors.
 
-// The backlit keyboard's keycap body: near black, so the glow can spill around it.
-private val RGB_KEYCAP_COLOR = Color(0xFF0A0B10)
+// Keyboard keycaps: near black with a hairline near-black border, so the light can leak around.
+private val KEYCAP_COLOR = Color(0xFF14161C)
+private val KEYCAP_BORDER_COLOR = Color(0xFF04050A)
 
 // Shared drawing metrics, so the sticks, the D-pad and the shoulders stay in step.
 private val KNOB_RADIUS = 22.dp
@@ -565,10 +572,14 @@ fun KeyboardKeyButton(
     onDown: () -> Unit,
     onUp: () -> Unit,
     modifier: Modifier = Modifier,
-    /** Draws a glowing dot in the top-right corner while the key is active (CapsLock). */
+    /** Draws the caps-lock LED dot in the top-right corner. */
     indicator: Boolean = false,
-    /** The zone colour this key is lit with, or null when the RGB backlight is off. */
+    /** True while the host has its Caps Lock LED on. */
+    indicatorOn: Boolean = false,
+    /** The colour this key is lit with, or null when unlit. */
     backlight: Color? = null,
+    /** The key's light intensity (0..1), used for the glow. Meaningful only with [backlight]. */
+    backlightIntensity: Float = 0f,
 ) {
     var pressed by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -576,7 +587,18 @@ fun KeyboardKeyButton(
     val onUpNow by rememberUpdatedState(onUp)
     val hapticNow by rememberUpdatedState(hapticsEnabled)
     val strengthNow by rememberUpdatedState(hapticsStrength)
-    Box(modifier.fillMaxHeight(), contentAlignment = Alignment.Center) {
+    // Pressed keys sink into the deck instead of shrinking.
+    val sink = if (pressed) 2.dp else 0.dp
+    Box(
+        modifier
+            .fillMaxHeight()
+            .drawBehind {
+                if (backlight != null && backlightIntensity > 0f) {
+                    drawKeyLeak(backlight, backlightIntensity)
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
         Canvas(
             Modifier
                 .fillMaxSize()
@@ -601,57 +623,128 @@ fun KeyboardKeyButton(
                     }
                 },
         ) {
-            val keyCorner = CornerRadius(8f.dp.toPx(), 8f.dp.toPx())
-            val sink = if (pressed) 2f.dp.toPx() else 0f
-            if (backlight == null) {
-                drawRoundRect(
-                    if (active || pressed) PadColors.accent.copy(alpha = 0.45f) else PadColors.surface,
-                    cornerRadius = keyCorner,
-                )
-                drawRoundRect(
-                    PadColors.border,
-                    cornerRadius = keyCorner,
-                    style = Stroke(width = HAIRLINE.toPx()),
-                )
-            } else {
-                // Backlit look: a near-black keycap with the light leaking out from under it
-                // into the gaps around it. Two glow layers build the leak, the black cap sits on top.
-                drawRoundRect(
-                    backlight.copy(alpha = 0.30f),
-                    topLeft = Offset(0f, sink),
-                    size = Size(size.width, size.height),
-                    cornerRadius = keyCorner,
-                )
-                drawRoundRect(
-                    backlight.copy(alpha = 0.45f),
-                    topLeft = Offset(2f, 2f + sink),
-                    size = Size(size.width - 4f, size.height - 4f),
-                    cornerRadius = CornerRadius(6f.dp.toPx(), 6f.dp.toPx()),
-                )
-                drawRoundRect(
-                    RGB_KEYCAP_COLOR,
-                    topLeft = Offset(4.5f, 4.5f + sink),
-                    size = Size(size.width - 9f, size.height - 9f),
-                    cornerRadius = CornerRadius(4f.dp.toPx(), 4f.dp.toPx()),
-                )
-            }
+            val sinkPx = sink.toPx()
+            val corner = CornerRadius(8f.dp.toPx(), 8f.dp.toPx())
+            // Keycap: always #14161C with a 1dp #04050A border. No coloured outline, ever.
+            drawRoundRect(
+                KEYCAP_COLOR,
+                topLeft = Offset(0f, sinkPx),
+                size = Size(size.width, size.height),
+                cornerRadius = corner,
+            )
+            drawRoundRect(
+                KEYCAP_BORDER_COLOR,
+                topLeft = Offset(0.5f, 0.5f + sinkPx),
+                size = Size(size.width - 1f, size.height - 1f),
+                cornerRadius = corner,
+                style = Stroke(width = 1f.dp.toPx()),
+            )
+            // Faint top highlight, white at 5% alpha along the top inside edge.
+            drawLine(
+                Color.White.copy(alpha = 0.05f),
+                start = Offset(4f, 2.5f + sinkPx),
+                end = Offset(size.width - 4f, 2.5f + sinkPx),
+                strokeWidth = 1f.dp.toPx(),
+            )
             if (indicator) {
-                // A soft halo plus a solid core, in the corner the label leaves free.
-                val r = 2.5f.dp.toPx()
-                val inset = r + 3f.dp.toPx()
-                val dot = Offset(size.width - inset, inset + sink)
-                drawCircle(Color.White.copy(alpha = 0.22f), radius = r * 2.6f, center = dot)
-                drawCircle(Color.White.copy(alpha = 0.45f), radius = r * 1.7f, center = dot)
-                drawCircle(Color.White, radius = r, center = dot)
+                // The caps-lock LED: green with a glow when on, dim slate when off.
+                val r = 3.5f.dp.toPx()
+                val dot = Offset(size.width - r - 3f.dp.toPx(), r + 3f.dp.toPx() + sinkPx)
+                if (indicatorOn) {
+                    drawCircle(PadColors.connected.copy(alpha = 0.35f), radius = r * 2.3f, center = dot)
+                    drawCircle(PadColors.connected, radius = r, center = dot)
+                } else {
+                    drawCircle(Color(0xFF3A4156), radius = r, center = dot)
+                }
             }
         }
         Text(
             label,
-            color = if (backlight == null) PadColors.text else backlight,
+            color = if (backlight == null) Color(0xFF7A8196) else backlight,
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
+            style = if (backlight != null) {
+                // The legend glows in the key's colour, like the print on a backlit key.
+                TextStyle(
+                    shadow = Shadow(
+                        color = backlight.withLightness(0.65f),
+                        offset = Offset.Zero,
+                        blurRadius = with(LocalDensity.current) { 6.dp.toPx() },
+                    ),
+                )
+            } else {
+                TextStyle.Default
+            },
             modifier = if (pressed) Modifier.offset(y = 2.dp) else Modifier,
         )
     }
+}
+
+/** The blurred light leak around a key: light spilling from under the keycap. */
+private fun DrawScope.drawKeyLeak(glow: Color, intensity: Float) {
+    val spread = (1f + intensity).dp.toPx()
+    val blur = (8f + 8f * intensity).dp.toPx()
+    val leak = glow.withLightness(0.55f)
+    val alpha = (intensity * 0.5f).coerceIn(0f, 1f)
+    try {
+        val paint = android.graphics.Paint().apply {
+            isAntiAlias = true
+            style = android.graphics.Paint.Style.FILL
+            color = leak.toArgb()
+            this.alpha = (alpha * 255f).toInt().coerceIn(0, 255)
+            maskFilter = android.graphics.BlurMaskFilter(blur, android.graphics.BlurMaskFilter.Blur.NORMAL)
+        }
+        drawContext.canvas.nativeCanvas.drawRoundRect(
+            -spread,
+            -spread,
+            size.width + spread,
+            size.height + spread,
+            8f.dp.toPx(),
+            8f.dp.toPx(),
+            paint,
+        )
+    } catch (_: Throwable) {
+        // Fallback: three stacked translucent rounded rects, largest outwards.
+        for (i in 3 downTo 1) {
+            val pad = spread * i
+            drawRoundRect(
+                leak.copy(alpha = (alpha * 0.33f * i).coerceIn(0f, 1f)),
+                topLeft = Offset(-pad, -pad),
+                size = Size(size.width + pad * 2f, size.height + pad * 2f),
+                cornerRadius = CornerRadius((8 + i * 5).dp.toPx()),
+            )
+        }
+    }
+}
+
+/** The key colour at a fixed lightness, keeping hue and saturation (self-contained HSL round trip). */
+private fun Color.withLightness(lightness: Float): Color {
+    val a = alpha
+    val r = red
+    val g = green
+    val b = blue
+    val cMax = maxOf(r, g, b)
+    val cMin = minOf(r, g, b)
+    val delta = cMax - cMin
+    val l = (cMax + cMin) / 2f
+    val s = if (delta == 0f) 0f else delta / (1f - kotlin.math.abs(2f * l - 1f))
+    val h = when {
+        delta == 0f -> 0f
+        cMax == r -> 60f * (((g - b) / delta) % 6f)
+        cMax == g -> 60f * (((b - r) / delta) + 2f)
+        else -> 60f * (((r - g) / delta) + 4f)
+    }
+    val c = (1f - kotlin.math.abs(2f * lightness - 1f)) * s
+    val x = c * (1f - kotlin.math.abs(((h / 60f) % 2f) - 1f))
+    val m = lightness - c / 2f
+    val (r1, g1, b1) = when {
+        h < 60f -> Triple(c, x, 0f)
+        h < 120f -> Triple(x, c, 0f)
+        h < 180f -> Triple(0f, c, x)
+        h < 240f -> Triple(0f, x, c)
+        h < 300f -> Triple(x, 0f, c)
+        else -> Triple(c, 0f, x)
+    }
+    return Color(r1 + m, g1 + m, b1 + m, a)
 }

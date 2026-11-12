@@ -158,19 +158,21 @@ class KeyboardMouseModeTest {
     }
 
     @Test
-    fun `fn key is the first key of the bottom row`() {
+    fun `fn and rgb keys lead the bottom row`() {
         val bottom = keyboardRows().last()
         assertEquals("Fn", bottom[0].label)
         assertEquals(KeyAction.Fn, bottom[0].action)
+        assertEquals("RGB", bottom[1].label)
+        assertEquals(KeyAction.Rgb, bottom[1].action)
     }
 
     @Test
-    fun `caps and win follow fn in the bottom row`() {
+    fun `caps and win follow fn and rgb in the bottom row`() {
         val bottom = keyboardRows().last()
-        assertEquals("Caps", bottom[1].label)
-        assertEquals(KeyAction.Usage(KeyUsage.CAPSLOCK), bottom[1].action)
-        assertEquals("Win", bottom[2].label)
-        assertTrue(bottom[2].action is KeyAction.Modifier)
+        assertEquals("Caps", bottom[2].label)
+        assertEquals(KeyAction.Usage(KeyUsage.CAPSLOCK), bottom[2].action)
+        assertEquals("Win", bottom[3].label)
+        assertTrue(bottom[3].action is KeyAction.Modifier)
     }
 
     @Test

@@ -30,6 +30,8 @@ class KeyboardShortcutsTest {
                 )
                 // Fn never reaches the descriptor; every declared usage is covered above.
                 is KeyAction.Fn -> Unit
+                // The RGB key never reaches the descriptor either.
+                is KeyAction.Rgb -> Unit
             }
         }
     }

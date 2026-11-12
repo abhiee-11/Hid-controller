@@ -84,7 +84,7 @@ private class ControllerModel {
     }
 }
 
-private val RGB_DECK_COLOR = Color(0xFF050608)
+private val RGB_DECK_COLOR = Color(0xFF06070A)
 
 /** One-line text for the top bar given the manager status. */
 fun statusLabel(status: HidGamepadManager.Status): String = when (status) {
@@ -188,7 +188,6 @@ fun GamepadScreen(
         mutableStateOf(needsOnboarding(prefs.getBoolean("setup_complete", false)))
     }
     var onboardingStep by remember { mutableStateOf(TutorialStep.start) }
-    var modeNotice by remember { mutableStateOf("") }
     // The report's send runs in this scope, not the panel's, so closing the panel while a
     // report is on the wire does not cancel it.
     val reportScope = rememberCoroutineScope()
@@ -330,7 +329,6 @@ fun GamepadScreen(
         resetLocalInputs()
         controllerMode = newMode
         prefs.edit().putString("controller_mode", newMode.name).apply()
-        modeNotice = modeLabel(newMode) + " mode active"
     }
 
     var settingsOpen by remember { mutableStateOf(false) }
@@ -408,9 +406,6 @@ fun GamepadScreen(
             }
             PadPill("Settings", accent = false, onClick = { settingsOpen = true })
         }
-        if (modeNotice.isNotBlank()) {
-            Text(modeNotice, fontSize = 12.sp, color = PadColors.text, modifier = Modifier.padding(bottom = 4.dp))
-        }
         when (controllerMode) {
             ControllerMode.GAMEPAD -> {
                 Text("Gamepad mode", fontSize = 12.sp, color = PadColors.secondary)
@@ -479,6 +474,7 @@ fun GamepadScreen(
                         }
                     },
                     onFn = { fnHeld = it },
+                    onRgb = { saveRgbConfig(it) },
                 )
             }
         }
@@ -1017,6 +1013,7 @@ private fun KeyboardStage(
     capsLockLed: Boolean,
     fnHeld: Boolean,
     rgb: RgbConfig,
+    onRgb: (RgbConfig) -> Unit,
     hapticsEnabled: Boolean,
     hapticsStrength: Float,
     onModifier: (Int, Boolean) -> Unit,
@@ -1041,9 +1038,17 @@ private fun KeyboardStage(
     }
     // Recent key presses, for the ripple and reactive effects. Capped and pruned on append.
     val flashes = remember { mutableStateListOf<Flash>() }
-    // A darker deck so the glow stands out when the backlight is on.
+    // When the RGB key was pressed down, for its 500 ms long-press detection.
+    var rgbDownAt by remember { mutableStateOf(0L) }
+    // A near-black deck with rounded corners so the glow stands out.
     val keyGap = if (rgb.enabled) 7.dp else 4.dp
-    Box(Modifier.fillMaxSize().background(if (rgb.enabled) RGB_DECK_COLOR else Color.Transparent)) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(14.dp))
+            .background(RGB_DECK_COLOR)
+            .padding(10.dp),
+    ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val rowCount = rows.size
         val keyboardRowHeight = ((maxHeight - keyGap * (rowCount + 1)) / rowCount).coerceAtLeast(40.dp)
@@ -1070,14 +1075,16 @@ private fun KeyboardStage(
                         val isCaps =
                             action is KeyAction.Usage && action.usage == KeyUsage.CAPSLOCK
                         val isFn = action is KeyAction.Fn
+                        val isRgb = action is KeyAction.Rgb
                         val pressed = action is KeyAction.Usage && action.usage in pressedKeys
                         val active = when (action) {
                             is KeyAction.Modifier -> (modifiers and action.bit) != 0
                             is KeyAction.Fn -> fnHeld
+                            is KeyAction.Rgb -> false
                             is KeyAction.Usage -> pressed
                         }
                         val usage = (action as? KeyAction.Usage)?.usage
-                        val backlight = if (rgb.enabled) {
+                        val zone = if (rgb.enabled) {
                             keyLight(
                                 rgb,
                                 keyCenterX,
@@ -1086,10 +1093,14 @@ private fun KeyboardStage(
                                 pressed = pressed,
                                 flashes = flashes,
                                 timeMillis = rgbClock,
-                            ).color
+                            )
                         } else {
                             null
                         }
+                        // Unlit means: the backlight is off, or reactive mode with nothing pressed.
+                        val unlit = zone == null || (rgb.effect == RgbEffect.REACTIVE && !pressed)
+                        val backlight = if (unlit) null else zone?.color
+                        val backlightIntensity = if (unlit) 0f else zone?.intensity ?: 0f
                         KeyboardKeyButton(
                             label = cap.label,
                             active = active,
@@ -1105,6 +1116,7 @@ private fun KeyboardStage(
                                 when (action) {
                                     is KeyAction.Modifier -> onModifier(action.bit, true)
                                     is KeyAction.Fn -> onFn(true)
+                                    is KeyAction.Rgb -> rgbDownAt = System.currentTimeMillis()
                                     is KeyAction.Usage -> onKey(action.usage, true)
                                 }
                             },
@@ -1112,11 +1124,24 @@ private fun KeyboardStage(
                                 when (action) {
                                     is KeyAction.Modifier -> onModifier(action.bit, false)
                                     is KeyAction.Fn -> onFn(false)
+                                    is KeyAction.Rgb -> {
+                                        // Tap toggles the backlight; a 500 ms hold steps to the next effect.
+                                        val held = System.currentTimeMillis() - rgbDownAt
+                                        if (held >= 500) {
+                                            val order = RgbEffect.entries
+                                            val next = order[(order.indexOf(rgb.effect) + 1) % order.size]
+                                            onRgb(rgb.copy(effect = next))
+                                        } else {
+                                            onRgb(rgb.copy(enabled = !rgb.enabled))
+                                        }
+                                    }
                                     is KeyAction.Usage -> onKey(action.usage, false)
                                 }
                             },
-                            indicator = isCaps && capsLockLed,
+                            indicator = isCaps,
+                            indicatorOn = capsLockLed,
                             backlight = backlight,
+                            backlightIntensity = backlightIntensity,
                             modifier = Modifier.weight(cap.weight).fillMaxHeight(),
                         )
                     }
