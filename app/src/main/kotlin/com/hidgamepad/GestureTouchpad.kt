@@ -50,7 +50,6 @@ fun GestureTouchpad(
     padGlow: PadGlowConfig = PadGlowConfig(),
     padGlowTimeMillis: Long = 0L,
     gesturesEnabled: Boolean = true,
-    onPadGlowToggle: () -> Unit = {},
 ) {
     val density = LocalDensity.current.density
     val context = LocalContext.current
@@ -59,7 +58,6 @@ fun GestureTouchpad(
     val consumerNow by rememberUpdatedState(onConsumerState)
     val hapticsOn by rememberUpdatedState(hapticsEnabled)
     val hapticsStrengthNow by rememberUpdatedState(hapticsStrength)
-    val onPadGlowToggleNow by rememberUpdatedState(onPadGlowToggle)
 
     val handler = remember { Handler(Looper.getMainLooper()) }
     // Debug aid: shows what the recognizer produced even when no host is connected.
@@ -82,13 +80,9 @@ fun GestureTouchpad(
     LaunchedEffect(sensitivity) { recognizer.sensitivity = sensitivity }
     LaunchedEffect(hostType) { bridge.hostType = hostType }
 
-    // The pad owns exactly one phone-local action: a 4-finger double-tap toggles the pad
-    // glow. It is consumed here, before the HID bridge, so the host never sees it.
     fun dispatch(actions: List<PadAction>) {
         if (actions.isEmpty()) return
-        if (actions.any { it is PadAction.PadGlowToggle }) onPadGlowToggleNow()
-        val remote = actions.filterNot { it is PadAction.PadGlowToggle }
-        if (remote.isNotEmpty()) bridge.dispatch(remote)
+        bridge.dispatch(actions)
     }
 
     // Turning gestures off must not leave a button or Ctrl held on the host.

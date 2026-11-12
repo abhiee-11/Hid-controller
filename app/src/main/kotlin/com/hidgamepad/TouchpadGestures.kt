@@ -22,12 +22,6 @@ sealed interface PadAction {
     data class Zoom(val steps: Int) : PadAction
     data object ZoomEnd : PadAction
     data class Host(val direction: PadDirection) : PadAction
-
-    /**
-     * Phone-local: a 4-finger double-tap asks the app to toggle the Mouse-mode pad glow.
-     * Never sent to the host — the gesture pad consumes it before the HID bridge.
-     */
-    data object PadGlowToggle : PadAction
 }
 
 const val TAP_TIMEOUT_MS = 220L
@@ -97,9 +91,6 @@ class TouchpadGestureRecognizer(
     private var pendingTapX = 0f
     private var pendingTapY = 0f
 
-    /** First 4-finger tap of a possible double-tap; the second one toggles the pad glow. */
-    private var pendingPadGlowTapMs: Long? = null
-
     fun frame(frame: PadFrame): List<PadAction> {
         val out = mutableListOf<PadAction>()
         val points = frame.points
@@ -132,7 +123,6 @@ class TouchpadGestureRecognizer(
         if (dragHeld) out += PadAction.Button(1, false)
         resetGesture()
         pendingTapMs = null
-        pendingPadGlowTapMs = null
         return out
     }
 
@@ -286,17 +276,6 @@ class TouchpadGestureRecognizer(
             out += PadAction.ZoomEnd
         } else if (dragHeld) {
             out += PadAction.Button(1, false)
-        } else if (nowMs - startMs <= TAP_TIMEOUT_MS && peakTravel <= TAP_SLOP_DP * density && maxPoints >= 4) {
-            // A 4-finger tap is a no-op on the wire today. Two of them in quick succession
-            // toggle the phone-local pad glow; the host sees nothing. This branch must come
-            // before the button logic below, which would otherwise emit nothing anyway.
-            val previous = pendingPadGlowTapMs
-            if (previous != null && nowMs - previous <= DOUBLE_TAP_WINDOW_MS) {
-                out += PadAction.PadGlowToggle
-                pendingPadGlowTapMs = null
-            } else {
-                pendingPadGlowTapMs = nowMs
-            }
         } else if (nowMs - startMs <= TAP_TIMEOUT_MS && peakTravel <= TAP_SLOP_DP * density) {
             // The tap's finger count is the number of fingers that were down together at the
             // peak of the gesture. Fingers never lift in the same frame on a touchscreen, so

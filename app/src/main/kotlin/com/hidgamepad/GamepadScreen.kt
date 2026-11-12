@@ -476,6 +476,21 @@ fun GamepadScreen(
             }
             ControllerMode.MOUSE -> {
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // The pad's own decoration gets a visible switch right above it, instead of
+                    // a hidden multi-finger gesture.
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Pad glow: ${if (padGlow.enabled) "ON" else "OFF"}",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PadColors.text,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(
+                            checked = padGlow.enabled,
+                            onCheckedChange = { savePadGlow(padGlow.copy(enabled = it)) },
+                        )
+                    }
                     GestureTouchpad(
                         sensitivity = mouseSensitivity,
                         hostType = hostType,
@@ -489,12 +504,10 @@ fun GamepadScreen(
                         padGlow = padGlow,
                         padGlowTimeMillis = padGlowClock,
                         gesturesEnabled = touchGesturesEnabled,
-                        onPadGlowToggle = { savePadGlow(padGlow.copy(enabled = !padGlow.enabled)) },
                     )
                     Text(
                         "Tap = click · 2-finger tap = right click · 2-finger drag = scroll · " +
-                            "pinch = zoom · double-tap then drag = drag · 3-finger tap/swipe · " +
-                            "4-finger double-tap = glow",
+                            "pinch = zoom · double-tap then drag = drag · 3-finger tap/swipe",
                         fontSize = 10.sp,
                         color = PadColors.secondary,
                         maxLines = 2,
