@@ -49,6 +49,8 @@ fun GestureTouchpad(
     modifier: Modifier = Modifier,
     padGlow: PadGlowConfig = PadGlowConfig(),
     padGlowTimeMillis: Long = 0L,
+    gesturesEnabled: Boolean = true,
+    onPadGlowToggle: () -> Unit = {},
 ) {
     val density = LocalDensity.current.density
     val context = LocalContext.current
@@ -57,6 +59,7 @@ fun GestureTouchpad(
     val consumerNow by rememberUpdatedState(onConsumerState)
     val hapticsOn by rememberUpdatedState(hapticsEnabled)
     val hapticsStrengthNow by rememberUpdatedState(hapticsStrength)
+    val onPadGlowToggleNow by rememberUpdatedState(onPadGlowToggle)
 
     val handler = remember { Handler(Looper.getMainLooper()) }
     // Debug aid: shows what the recognizer produced even when no host is connected.
@@ -79,18 +82,35 @@ fun GestureTouchpad(
     LaunchedEffect(sensitivity) { recognizer.sensitivity = sensitivity }
     LaunchedEffect(hostType) { bridge.hostType = hostType }
 
+    // The pad owns exactly one phone-local action: a 4-finger double-tap toggles the pad
+    // glow. It is consumed here, before the HID bridge, so the host never sees it.
+    fun dispatch(actions: List<PadAction>) {
+        if (actions.isEmpty()) return
+        if (actions.any { it is PadAction.PadGlowToggle }) onPadGlowToggleNow()
+        val remote = actions.filterNot { it is PadAction.PadGlowToggle }
+        if (remote.isNotEmpty()) bridge.dispatch(remote)
+    }
+
+    // Turning gestures off must not leave a button or Ctrl held on the host.
+    LaunchedEffect(gesturesEnabled) {
+        if (!gesturesEnabled) {
+            dispatch(recognizer.reset())
+            bridge.releaseAll()
+        }
+    }
+
     var fingerDown by remember { mutableStateOf(false) }
 
     LaunchedEffect(fingerDown) {
         while (fingerDown) {
             delay(16)
-            bridge.dispatch(recognizer.tick(SystemClock.uptimeMillis()))
+            dispatch(recognizer.tick(SystemClock.uptimeMillis()))
         }
     }
 
     DisposableEffect(recognizer, bridge) {
         onDispose {
-            bridge.dispatch(recognizer.reset())
+            dispatch(recognizer.reset())
             bridge.releaseAll()
         }
     }
@@ -98,13 +118,13 @@ fun GestureTouchpad(
     // A host that went away must not inherit a held button or a held Ctrl.
     LaunchedEffect(hostConnected) {
         if (!hostConnected) {
-            bridge.dispatch(recognizer.reset())
+            dispatch(recognizer.reset())
             bridge.releaseAll()
         }
     }
 
     Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Canvas(
+        val padModifier = if (gesturesEnabled) {
             Modifier.fillMaxSize().pointerInput(Unit) {
                 try {
                     awaitEachGesture {
@@ -115,7 +135,7 @@ fun GestureTouchpad(
                             timeMs = SystemClock.uptimeMillis(),
                             points = listOf(PadPoint(down.id.value, down.position.x, down.position.y)),
                         )
-                        bridge.dispatch(recognizer.frame(initialFrame))
+                        dispatch(recognizer.frame(initialFrame))
                         try {
                             while (true) {
                                 val event = awaitPointerEvent()
@@ -129,7 +149,7 @@ fun GestureTouchpad(
                                 if (actions.isNotEmpty()) {
                                     Log.i("HidGamepad", "GESTURE actions=$actions")
                                 }
-                                bridge.dispatch(actions)
+                                dispatch(actions)
                                 if (event.changes.none { it.pressed }) break
                             }
                         } finally {
@@ -142,8 +162,11 @@ fun GestureTouchpad(
                     Log.e("HidGamepad", "GESTURE pointer loop failed", e)
                     fingerDown = false
                 }
-            },
-        ) {
+            }
+        } else {
+            Modifier.fillMaxSize()
+        }
+        Canvas(padModifier) {
             drawRoundRect(color = Color(0xFF26272F), cornerRadius = CornerRadius(20f, 20f))
             drawRoundRect(
                 color = Color(0xFF555C6B),

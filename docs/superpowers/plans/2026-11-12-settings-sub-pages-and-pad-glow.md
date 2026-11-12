@@ -577,6 +577,38 @@ git commit -m "feat: 4-finger double-tap toggles the mouse pad glow"
 
 ---
 
+### Task 7: HID on/off toggle at the top of the Settings list
+
+**Files:**
+- Modify: `app/src/main/kotlin/com/hidgamepad/GamepadScreen.kt` (`SettingsPanel`: list branch gains the HID row; the CONNECTION page loses it)
+- Modify: `app/src/main/kotlin/com/hidgamepad/SettingsSections.kt` (CONNECTION summary)
+
+**Why:** the user wants the HID on/off switch on the list itself, above "Report a problem", not buried inside a sub-page.
+
+- [ ] **Step 1:** In the `current == null` branch, after the "Settings"/"Close" header row and **before** the "Report a problem" button, add the HID row using the existing `hidEnabled` / `onHidEnabledChange` parameters (the same `Row { Text(...); Switch(...) }` that lives on the CONNECTION page today), plus its short explanation text.
+- [ ] **Step 2:** Delete the HID row and its explanation from the `SettingsSection.CONNECTION` branch. Leave `Connected host`, `Reconnect`, `Change device`, `Make discoverable`, `Getting started`.
+- [ ] **Step 3:** Change `SettingsSection.CONNECTION`'s summary from `"HID on/off, host, pairing"` to `"Host, pairing"`.
+- [ ] **Step 4:** Build + device check: the list shows the HID switch above Report a problem; the Connection page no longer has it. Commit.
+
+---
+
+### Task 8: Touchpad touch-gestures ON/OFF
+
+**Files:**
+- Modify: `app/src/main/kotlin/com/hidgamepad/GestureTouchpad.kt` (new defaulted `gesturesEnabled: Boolean = true`; when false the `pointerInput` is not attached and held inputs are released)
+- Modify: `app/src/main/kotlin/com/hidgamepad/GamepadScreen.kt` (persisted `touch_gestures_on`, default `true`; switch on the Controls page; pass it in the MOUSE branch)
+
+**Why:** the user asked where to turn the touchpad's touch gestures on and off. Default is ON, so behaviour is unchanged until the user flips it.
+
+**HID contract:** when off, the pad dispatches nothing to the bridge — no reports of any kind. Drawing (border + glow) is unchanged.
+
+- [ ] **Step 1:** Add `var touchGesturesEnabled by remember { mutableStateOf(prefs.getBoolean("touch_gestures_on", true)) }` next to the other prefs-backed state, and a setter that writes `touch_gestures_on`.
+- [ ] **Step 2:** Add `gesturesEnabled: Boolean = true` to `GestureTouchpad`. Build the pointer modifier only when enabled, and add a `LaunchedEffect(gesturesEnabled)` that, when it becomes false, runs `bridge.dispatch(recognizer.reset())` and `bridge.releaseAll()` so nothing stays held.
+- [ ] **Step 3:** Pass `gesturesEnabled = touchGesturesEnabled` in the MOUSE branch. Add a `Touchpad gestures: ON/OFF` switch (plus a one-line explanation) on the Controls page, wired to the new state.
+- [ ] **Step 4:** Build + device check: with gestures off, taps/scrolls/pinches/swipes on the pad send nothing to the host; with them on, behaviour is unchanged. Commit.
+
+---
+
 ## Self-Review
 
 **Spec coverage:** sub-pages list + four pages (Task 2); Back steps (Task 1, consumed by Task 2's header and by the pending Back-navigation task); pad glow independent settings (Tasks 3, 5); pad glow drawing only in Mouse mode (Task 4); defensive persistence (Task 5); reduced five-effect set (Task 3); `PadColors`-only + dp-only (Global Constraints); 4-finger double-tap toggle (Task 6, phone-local, no HID change). No gaps.

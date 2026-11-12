@@ -2,7 +2,7 @@ package com.hidgamepad
 
 /** One page of the Settings sheet. `null` in the panel means the list itself. */
 enum class SettingsSection(val title: String, val summary: String) {
-    CONNECTION("Connection", "HID on/off, host, pairing"),
+    CONNECTION("Connection", "Host, pairing"),
     CONTROLS("Controls", "Mode, host type, haptics, tilt, pointer"),
     RGB("RGB backlight", "Effects and colours"),
     INFORMATION("Information", "Help and status"),

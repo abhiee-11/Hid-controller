@@ -193,6 +193,7 @@ fun GamepadScreen(
     var hostType by remember { mutableStateOf(hostTypeFromStorage(prefs.getString("host_type", null))) }
     var controllerMode by remember { mutableStateOf(controllerModeFromStorage(prefs.getString("controller_mode", null))) }
     var mouseSensitivity by remember { mutableStateOf(prefs.getFloat("mouse_sensitivity", 1f)) }
+    var touchGesturesEnabled by remember { mutableStateOf(prefs.getBoolean("touch_gestures_on", true)) }
     var needsSetup by remember {
         mutableStateOf(needsOnboarding(prefs.getBoolean("setup_complete", false)))
     }
@@ -487,10 +488,13 @@ fun GamepadScreen(
                         modifier = Modifier.weight(1f),
                         padGlow = padGlow,
                         padGlowTimeMillis = padGlowClock,
+                        gesturesEnabled = touchGesturesEnabled,
+                        onPadGlowToggle = { savePadGlow(padGlow.copy(enabled = !padGlow.enabled)) },
                     )
                     Text(
                         "Tap = click · 2-finger tap = right click · 2-finger drag = scroll · " +
-                            "pinch = zoom · double-tap then drag = drag · 3-finger tap/swipe",
+                            "pinch = zoom · double-tap then drag = drag · 3-finger tap/swipe · " +
+                            "4-finger double-tap = glow",
                         fontSize = 10.sp,
                         color = PadColors.secondary,
                         maxLines = 2,
@@ -603,6 +607,11 @@ fun GamepadScreen(
                 onRgb = { saveRgbConfig(it) },
                 padGlow = padGlow,
                 onPadGlow = { savePadGlow(it) },
+                touchGesturesEnabled = touchGesturesEnabled,
+                onTouchGestures = {
+                    touchGesturesEnabled = it
+                    prefs.edit().putBoolean("touch_gestures_on", it).apply()
+                },
             )
         }
     }
@@ -903,6 +912,8 @@ private fun SettingsPanelPreview() {
         onTiltDeadzone = {},
         onTiltZero = {},
         onMouseSensitivity = {},
+        touchGesturesEnabled = true,
+        onTouchGestures = {},
         onClearInputs = {},
         rgbConfig = RgbConfig(),
         onRgb = {},
@@ -987,6 +998,8 @@ private fun SettingsPanel(
     onTiltDeadzone: (Float) -> Unit,
     onTiltZero: () -> Unit,
     onMouseSensitivity: (Float) -> Unit,
+    touchGesturesEnabled: Boolean,
+    onTouchGestures: (Boolean) -> Unit,
     onClearInputs: () -> Unit,
     rgbConfig: RgbConfig,
     onRgb: (RgbConfig) -> Unit,
@@ -1015,6 +1028,24 @@ private fun SettingsPanel(
                 Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = PadColors.text, modifier = Modifier.weight(1f))
                 Button(onClick = onClose, modifier = Modifier.height(48.dp)) { Text("Close") }
             }
+            // HID on/off sits on the list itself, not inside a page: it is the master switch
+            // for the whole app.
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "HID controller: ${if (hidEnabled) "ON" else "OFF"}",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = PadColors.text,
+                    modifier = Modifier.weight(1f),
+                )
+                Switch(checked = hidEnabled, onCheckedChange = onHidEnabledChange)
+            }
+            Text(
+                "Off releases every input, unregisters the HID device and removes the notification. " +
+                    "Phone Bluetooth and other Bluetooth connections are unaffected.",
+                fontSize = 11.sp,
+                color = PadColors.secondary,
+            )
             // Reporting a problem sits at the top of the list: it is the one action a user
             // reaches for when something is not working.
             Button(
@@ -1028,22 +1059,6 @@ private fun SettingsPanel(
             SettingsPageHeader(title = current.title, onBack = { section = null }, onClose = onClose)
             when (current) {
                 SettingsSection.CONNECTION -> {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "HID controller: ${if (hidEnabled) "ON" else "OFF"}",
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = PadColors.text,
-                            modifier = Modifier.weight(1f),
-                        )
-                        Switch(checked = hidEnabled, onCheckedChange = onHidEnabledChange)
-                    }
-                    Text(
-                        "Off releases every input, unregisters the HID device and removes the notification. " +
-                            "Phone Bluetooth and other Bluetooth connections are unaffected.",
-                        fontSize = 11.sp,
-                        color = PadColors.secondary,
-                    )
                     Text("Connected host: $statusText", fontSize = 12.sp, color = PadColors.secondary)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Button(onClick = onReconnect, modifier = Modifier.height(48.dp)) { Text("Reconnect") }
@@ -1098,6 +1113,22 @@ private fun SettingsPanel(
                     Text("Tilt owns left-stick X when on — touch stick controls Y only", fontSize = 11.sp, color = PadColors.secondary)
                     Button(onClick = onTiltZero, modifier = Modifier.height(48.dp)) { Text("Calibrate / zero") }
                     Text("Sensor: $sensorDescription", fontSize = 11.sp, color = PadColors.secondary)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Touchpad gestures: ${if (touchGesturesEnabled) "ON" else "OFF"}",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PadColors.text,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(checked = touchGesturesEnabled, onCheckedChange = onTouchGestures)
+                    }
+                    Text(
+                        "Off makes the Mouse-mode touchpad ignore taps, scrolls, pinches and swipes. " +
+                            "It still draws, and the host receives nothing.",
+                        fontSize = 11.sp,
+                        color = PadColors.secondary,
+                    )
                     Text("Pointer & scroll speed Ã—${"%.2f".format(mouseSensitivity)}", fontSize = 12.sp, color = PadColors.secondary)
                     Slider(value = mouseSensitivity, onValueChange = onMouseSensitivity, valueRange = 0.25f..2.0f, steps = 7, modifier = Modifier.width(220.dp))
                     Button(onClick = onClearInputs, modifier = Modifier.height(48.dp)) { Text("Clear all held inputs") }
