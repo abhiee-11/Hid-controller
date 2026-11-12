@@ -7,14 +7,19 @@ Pick this up tomorrow. Everything below is measured, not inferred, unless marked
 
 - Branch `feat/touchpad-gestures`, local only (never pushed), not merged.
 - Build + tests: `.\gradlew.bat --console=plain testDebugUnitTest assembleDebug`
-  → **139 tests, 0 failures**.
+  → **143 tests, 0 failures**.
+- **Master HID on/off switch added** (Settings, top). Off releases every input, unregisters
+  the HID device, stops `HidControllerService` and removes its notification; on starts it
+  again and shows the notification only after registration succeeds. Persisted under
+  `hid_enabled` (default on); a phone left off stays off across a restart. See
+  `docs/superpowers/specs/2026-11-12-master-hid-switch-design.md`.
 - **Two review findings are fixed:** the GAMEPAD_ONLY descriptor wrote `0x27` (a 4-byte HID
   item) for Logical Maximum and swallowed the next item, so the report parsed to 44 bits
   instead of 104 (now `0x26`, with a parse-based regression test); and the re-pair warning was
   defeated because reports used the selected profile, not the host's (now a persisted
   `pairedProfile` drives both, cleared only by the new "I've re-paired the host" button). See
   "Review findings".
-- The phone app is on `hid_profile=COMPOSITE`, `controller_mode=GAMEPAD`.
+- The phone app is on `hid_profile=COMPOSITE`, `controller_mode=GAMEPAD`, `hid_enabled=true`.
 - Both hosts have re-paired and decode the current composite descriptor.
 
 ## Verified on the tablet (composite profile)
@@ -136,7 +141,38 @@ review missed it.
   with a timed fallback), matching plan lines 449/488/548. Verified in the same logcat run:
   `onAppStatusChanged registered=false` immediately followed by `registerApp requested`.
 
-Suite is now **139 tests, 0 failures**.
+### Master HID switch (new, commit `2b6ad95`)
+
+- **The switch itself.** Settings now opens with `HID controller: ON/OFF` and a `Switch`.
+  Off: `manager.releaseAllInputs()` → `manager.stop()` → `stopService(...)`; the service's
+  `onDestroy` removes the notification. On: `startForegroundService` + `manager.start()`.
+  Persisted as `hid_enabled` (default on); `onResume` and every `ensureHidService()` path are
+  gated on `shouldRunHidService(hidEnabled, permissionsGranted)`, so a phone left off never
+  reactivates on restart.
+- **Bug found and fixed while verifying — the switch turned itself back on.** `stop()` closes
+  the profile proxy, which fires `onServiceDisconnected`, whose 3 s self-heal then re-fetched
+  the proxy and re-registered the HID device — the log showed `registerApp requested` three
+  seconds after `HID switch OFF`. Fixed with a `stopped` flag consulted through the new
+  `shouldSelfHealProxy(stopped, bluetoothEnabled)` predicate; the 8 s post-off logcat run now
+  shows no re-registration.
+- **Notification timing.** `HidControllerService` no longer calls `startForeground` in
+  `onCreate`. It shows the notification from a new `HidGamepadManager.onRegistrationChanged`
+  callback when `registered=true`. The platform kills a service that misses the ~5 s
+  `startForeground` deadline, so a 4 s fallback is armed; the normal path wins
+  (`service: HID registered — showing the persistent notification`, 44 ms after
+  `onAppStatusChanged registered=true`).
+- **Manager instance kept across off/on.** `HidRuntime.stop()` used to null the manager; that
+  left the activity's `collectAsState` bound to a dead manager's flows after an off→on cycle.
+  It now stops the manager but keeps the instance (the manager is fully restartable).
+
+Verified on the phone `<PHONE_SERIAL>`: launch with `hid_enabled=false` starts no service and
+no notification; the top bar reads "HID off — turn the switch on to enable"; toggling on
+registers and notifies; toggling off releases, unregisters and removes the notification; a
+force-stop + relaunch with the pref false starts nothing. Bluetooth stayed on
+(`settings get global bluetooth_on` = 1) with the same bonded devices, and
+`hid_profile`/`paired_profile`/`controller_mode` were untouched.
+
+Suite is now **143 tests, 0 failures**.
 
 ### Open — ranked
 
