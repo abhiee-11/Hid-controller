@@ -35,6 +35,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -587,8 +588,10 @@ fun KeyboardKeyButton(
     val strengthNow by rememberUpdatedState(hapticsStrength)
     // Pressed keys sink into the deck instead of shrinking.
     val sink = if (pressed) 2.dp else 0.dp
+    // Splitting the key out of the single display list: without a layer per key, any key
+    // invalidation re-records the whole keyboard (and usually the whole window) every frame.
     Box(
-        modifier.fillMaxHeight(),
+        modifier.fillMaxHeight().graphicsLayer(),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(

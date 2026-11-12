@@ -47,6 +47,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -1282,6 +1283,13 @@ private fun KeyboardStage(
 ) {
     // The function row sits above the number row, so F1-F12 are always one tap away.
     val rows = listOf(functionRow()) + keyboardRows()
+    // Callbacks are read through these so the per-key lambdas below can be remembered with
+    // stable keys: without it every recomposition hands each of the ~66 keys a fresh lambda,
+    // which makes all of them recompose on every keypress (and on every backlight tick).
+    val onModifierNow by rememberUpdatedState(onModifier)
+    val onKeyNow by rememberUpdatedState(onKey)
+    val onFnNow by rememberUpdatedState(onFn)
+    val rgbNow by rememberUpdatedState(rgb)
     // The backlight's clock and its press flashes share one time base.
     val rgbStart = remember { System.currentTimeMillis() }
     // The backlight's clock: a slow tick drives the glow. It only runs while the RGB
@@ -1356,31 +1364,41 @@ private fun KeyboardStage(
                         // Unlit means: the backlight is off, or reactive mode with nothing pressed.
                         val unlit = zone == null || (rgb.effect == RgbEffect.REACTIVE && !pressed)
                         val backlight = if (unlit) null else zone?.color
-                        KeyboardKeyButton(
-                            label = cap.label,
-                            active = active,
-                            hapticsEnabled = hapticsEnabled,
-                            hapticsStrength = hapticsStrength,
-                            onDown = {
+                        // Remembered so an untouched key keeps the same lambda identity and can be
+                        // skipped by Compose. The captured values are derived from the static key
+                        // layout, so remembering on the key's index is enough.
+                        val onDown = remember(index) {
+                            {
                                 // Feed the backlight's reactive effects with a press at this key.
-                                if (rgb.enabled && usage != null) {
+                                val rgbCfg = rgbNow
+                                if (rgbCfg.enabled && usage != null) {
                                     val now = System.currentTimeMillis() - rgbStart
                                     flashes.add(Flash(usage, keyCenterX, keyY, now))
                                     while (flashes.size > 12) flashes.removeAt(0)
                                 }
                                 when (action) {
-                                    is KeyAction.Modifier -> onModifier(action.bit, true)
-                                    is KeyAction.Fn -> onFn(true)
-                                    is KeyAction.Usage -> onKey(action.usage, true)
+                                    is KeyAction.Modifier -> onModifierNow(action.bit, true)
+                                    is KeyAction.Fn -> onFnNow(true)
+                                    is KeyAction.Usage -> onKeyNow(action.usage, true)
                                 }
-                            },
-                            onUp = {
+                            }
+                        }
+                        val onUp = remember(index) {
+                            {
                                 when (action) {
-                                    is KeyAction.Modifier -> onModifier(action.bit, false)
-                                    is KeyAction.Fn -> onFn(false)
-                                    is KeyAction.Usage -> onKey(action.usage, false)
+                                    is KeyAction.Modifier -> onModifierNow(action.bit, false)
+                                    is KeyAction.Fn -> onFnNow(false)
+                                    is KeyAction.Usage -> onKeyNow(action.usage, false)
                                 }
-                            },
+                            }
+                        }
+                        KeyboardKeyButton(
+                            label = cap.label,
+                            active = active,
+                            hapticsEnabled = hapticsEnabled,
+                            hapticsStrength = hapticsStrength,
+                            onDown = onDown,
+                            onUp = onUp,
                             indicator = isCaps,
                             indicatorOn = capsLockLed,
                             backlight = backlight,
