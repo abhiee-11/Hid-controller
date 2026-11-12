@@ -64,7 +64,7 @@ Verified on the phone `<PHONE_SERIAL>` + tablet `<TABLET_SERIAL>` (2026-11-12):
   GAMEPAD_ONLY). So the warning follows the derivation, not a stored picker.
 - The stale `hid_profile=GAMEPAD_ONLY` did **not** win: after re-pairing (tablet forgot the
   phone, phone made discoverable, paired again) the tablet's `dumpsys input` showed one merged
-  node `Abhiskar's vivo Y29 Keyboard`, `Sources: KEYBOARD | DPAD | GAMEPAD | MOUSE | STYLUS |
+  node `<HOST>`'s vivo Y29 Keyboard`, `Sources: KEYBOARD | DPAD | GAMEPAD | MOUSE | STYLUS |
   JOYSTICK`, X/Y/Z/RZ 8-bit joystick axes plus `BRAKE`/`GAS` — i.e. the **composite** descriptor.
   Before the re-pair the tablet still showed the cached GAMEPAD_ONLY layout (16-bit X/Y/RX/RY),
   which is the expected "host caches the descriptor" behaviour.
@@ -152,7 +152,7 @@ App
   Screen         Mouse
   Mode           Mouse
   Host type      Android device
-  HID            Connected: HOST-PC
+  HID            Connected: <HOST_NAME>
   Tilt           off
 ```
 
@@ -279,7 +279,7 @@ Chrome 157 on the tablet (`<TABLET_SERIAL>`) **does** expose the phone to web pa
 - The Gamepad API is gated behind a **real user gesture**. Before a genuine tap,
   `navigator.getGamepads()` returns 8 null slots (`count: 8, pads: []`). An `adb`-injected
   tap satisfies the gate; once it fires, `gamepadconnected` fires and the pad stays live.
-- `gamepadconnected` payload: `id: "Abhiskar's vivo Y29 Keyboard (Vendor: 001d Product: 0000)"`,
+- `gamepadconnected` payload: `id: "<HOST>'s vivo Y29 Keyboard (Vendor: 001d Product: 0000)"`,
   **`mapping: ""`**, `axes: 7`, `buttons: 17`.
 - Unlike the PC, the tablet's browser maps the composite pad to a **near-W3C layout**
   (measured control-by-control, not inferred):
