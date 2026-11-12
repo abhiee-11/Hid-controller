@@ -25,6 +25,7 @@ needed on the receiving side. Mode switching happens in the app and does not re-
 - Multi-touch controls: hold a stick and tap buttons at the same time
 - ~8% stick deadzone, stick recenter on release
 - On-screen status bar: mode selector, Devices, Settings, connection state
+- Master HID on/off switch in Settings (see below)
 - Optional phone-local haptic feedback (persisted); this is not host-controlled rumble
 
 ## Requirements
@@ -71,6 +72,23 @@ The same caching applies to the **HID profile**: a host reads the report descrip
 at pairing. Switching the profile in Settings therefore does nothing until the host
 removes the phone and pairs it again.
 
+## Turning HID off
+
+Settings opens with a master switch, **HID controller: ON/OFF**. It controls whether the
+phone advertises itself as a Bluetooth HID device at all.
+
+- **Off** releases every held input, unregisters the HID device, stops the foreground
+  service and removes its persistent notification. The phone stops looking like a
+  gamepad/keyboard/mouse to every host until you turn it back on. Use it to save battery or
+  when you do not want the phone to appear as a controller.
+- **On** starts the service and registers the HID device again; the notification appears
+  only after registration succeeds.
+
+The choice is remembered: a phone left off stays off after the app is restarted, so it will
+not silently start advertising again. Turning HID off does not touch normal phone Bluetooth
+or any other Bluetooth connection, and it does not change the selected profile or the
+re-pair state — those are handled separately.
+
 ## Mouse gestures
 
 Mouse mode is one full-bleed pad with no on-screen buttons. Every gesture is sent through
@@ -97,6 +115,7 @@ app/src/main/kotlin/com/hidgamepad/
   GamepadState.kt       Combined HID descriptor + gamepad/keyboard/mouse encoders (unit-tested)
   GamepadProfiles.kt    The two HID profiles: descriptors, report encoders, profile choice
   HidGamepadManager.kt  Bluetooth HID profile: register, connect, send, heartbeat
+  HidControllerService.kt  Foreground service that keeps the HID registration alive
   TouchpadGestures.kt   Pure pointer-frame recognizer (tap, scroll, pinch, swipe) — unit-tested
   TouchpadGestureBridge.kt  Gestures -> mouse/keyboard/consumer reports with release timing
   HostGestureMapping.kt Three-finger swipe table per host type
