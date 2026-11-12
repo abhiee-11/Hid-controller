@@ -7,11 +7,13 @@ Pick this up tomorrow. Everything below is measured, not inferred, unless marked
 
 - Branch `feat/touchpad-gestures`, local only (never pushed), not merged.
 - Build + tests: `.\gradlew.bat --console=plain testDebugUnitTest assembleDebug`
-  → **135 tests, 0 failures**.
-- **A blocker found in review was fixed at the end of the session:** the GAMEPAD_ONLY
-  descriptor wrote `0x27` (a 4-byte HID item) for Logical Maximum and swallowed the next item,
-  so the report parsed to 44 bits instead of 104. Now `0x26`, with a parse-based regression
-  test. See "Review findings".
+  → **139 tests, 0 failures**.
+- **Two review findings are fixed:** the GAMEPAD_ONLY descriptor wrote `0x27` (a 4-byte HID
+  item) for Logical Maximum and swallowed the next item, so the report parsed to 44 bits
+  instead of 104 (now `0x26`, with a parse-based regression test); and the re-pair warning was
+  defeated because reports used the selected profile, not the host's (now a persisted
+  `pairedProfile` drives both, cleared only by the new "I've re-paired the host" button). See
+  "Review findings".
 - The phone app is on `hid_profile=COMPOSITE`, `controller_mode=GAMEPAD`.
 - Both hosts have re-paired and decode the current composite descriptor.
 
@@ -114,27 +116,31 @@ review missed it.
   is why the blocker shipped. Added
   `the gamepad-only descriptor parses to exactly a thirteen byte report`, reusing the existing
   short-item walker (now `internal` in `GamepadStateTest.kt`). Red first:
-  `expected:<104> but was:<44>`; green after the fix. Suite is now **135 tests, 0 failures**.
+  `expected:<104> but was:<44>`; green after the fix.
+- **high — the re-pair warning was defeated and reports used the wrong profile.**
+  `_pairedProfile` was overwritten with the selected profile on `STATE_CONNECTED`, and every
+  `reportFor(...)` call encoded with the selected profile, so after a switch to GAMEPAD_ONLY
+  the phone sent a 13-byte report to a host still decoding the 9-byte composite — same report
+  ID, so the host mis-parsed it as garbage. Now a persisted `pairedProfile` is the profile the
+  host decodes: reports follow it (`reportForHost`), the warning reflects it, and the connect
+  callback no longer touches it. The new `confirmRepaired()` action is the only thing that
+  switches it, backed by the **"I've re-paired the host"** button in Settings. Verified on the
+  phone: selecting GAMEPAD_ONLY logged `HID profile changed to GAMEPAD_ONLY - re-registering`
+  and showed "Re-pair needed: the host is still using the Keyboard + mouse + gamepad
+  descriptor"; tapping the button logged `user confirmed a re-pair; reports now follow
+  GAMEPAD_ONLY` and persisted `paired_profile=GAMEPAD_ONLY`. The reverse direction behaves the
+  same. Commit `71b299c`.
+- **high — the `hidProfile` setter never re-registered.** It only logged, and `registerApp()`
+  early-returns while registered, so a live change never published the new descriptor. The
+  setter now unregisters and re-registers (the unregister callback triggers the re-register,
+  with a timed fallback), matching plan lines 449/488/548. Verified in the same logcat run:
+  `onAppStatusChanged registered=false` immediately followed by `registerApp requested`.
+
+Suite is now **139 tests, 0 failures**.
 
 ### Open — ranked
 
-1. **high — the re-pair warning is defeated, and reports use the wrong profile.**
-   `HidGamepadManager.kt:358` sets `_pairedProfile.value = hidProfile` on `STATE_CONNECTED`,
-   but the descriptor in force is the one captured at the last `registerApp()`
-   (`:402-403`), and a profile switch does not re-register. So after a switch the app claims
-   the host understands the new profile and hides the warning while the host still holds the
-   old descriptor. Worse, `reportFor(hidProfile, …)` at `:503`, `:610` and `:630` then encodes
-   a 13-byte gamepad-only report for a host that registered the 9-byte composite — same report
-   ID, so the host mis-parses it as garbage rather than rejecting it.
-   Fix: record the profile used at register time, expose *that* to the warning, and encode with
-   it. `_pairedProfile` is also never updated on the `setActiveHost`/`refreshConnected` path
-   and is initialised to `COMPOSITE` regardless of the stored profile.
-2. **high — the `hidProfile` setter never re-registers.** `HidGamepadManager.kt:80-89` only
-   logs. The plan required the setter to re-register when the value changes while registered
-   (plan lines 449/488/548), and `registerApp()` early-returns while `appRegistered` is true,
-   so a live profile change never publishes the new descriptor. Either implement the
-   unregister/re-register or change the plan and the UI text to say a restart is required.
-3. **medium — GAMEPAD_ONLY wire order is wrong on Android/Linux hosts.**
+1. **medium — GAMEPAD_ONLY wire order is wrong on Android/Linux hosts.**
    `GamepadProfiles.kt:27-40` (`w3cWireBit`) maps X→2, Y→3, L1→4, R1→5, SEL→8, START→9. That
    is right for a browser (positional index), but the kernel maps the same positions to
    `BTN_C, BTN_NORTH, BTN_WEST, BTN_Z, BTN_TL2, BTN_TR2`. Measured proof the kernel is
@@ -142,22 +148,22 @@ review missed it.
    buttons on the tablet. Fix: emit canonical order, or restrict the profile to browser hosts.
    Related: `w3cWireBit` returns -1 for unmapped canonical bits and the encoder drops them
    silently — the two profiles' button sets differ with no documentation.
-4. **medium — MODE at wire bit 12 collides with the W3C D-pad slot.** In the W3C standard
+2. **medium — MODE at wire bit 12 collides with the W3C D-pad slot.** In the W3C standard
    layout 12–15 are the D-pad and 16 is Guide/MODE, and the descriptor declares only 16
    buttons, so there is no index 16. The D-pad is also a hat, not buttons 12–15. Consequence:
    GAMEPAD_ONLY can never be `mapping: "standard"`. Fix: declare 17 buttons and put MODE at
    16, or stop calling the profile W3C-standard.
-5. **medium — GAMEPAD_ONLY has never been exercised by a real host.** The PC measurement was
+3. **medium — GAMEPAD_ONLY has never been exercised by a real host.** The PC measurement was
    taken on the composite (10 axes = 6 gamepad + 4 mouse). Before claiming the profile works,
    select it, re-pair the PC, and check `axes.length == 6` and `buttons.length == 16`.
-6. **medium — `HAT_NEUTRAL` contradicts the spec.** Code ships 15 (`GamepadState.kt:30`,
+4. **medium — `HAT_NEUTRAL` contradicts the spec.** Code ships 15 (`GamepadState.kt:30`,
    `GamepadProfiles.kt:100`), justified by the kernel clamping an out-of-range hat to centred
    — sound for Linux/Android, but the spec's own table (`spec:162`) says "8 = centred", and 8
    is the HID null value for a Null-State hat with Logical Max 7. Write 8 for the gamepad-only
    profile or record the deviation in the spec table.
-7. **low — `GAMEPAD_ONLY_REPORT_SIZE` is dead code** (`GamepadProfiles.kt:21`): declared, never
+5. **low — `GAMEPAD_ONLY_REPORT_SIZE` is dead code** (`GamepadProfiles.kt:21`): declared, never
    used, while the encoder hardcodes 13. Use it, or delete it.
-8. **low — doc nits.** `REPORT.md` said 133 tests (now 135);
+6. **low — doc nits.** `REPORT.md` said 133 tests (now 139);
    `docs/hid-gamepad-manual-test-checklist.md` claims PASS for "one pad, 16 buttons, 6 axes"
    but the measured pad had **10** axes — 6 is the unverified gamepad-only target.
 
@@ -172,7 +178,7 @@ review missed it.
 
 - `GamepadScreen.kt` gesture/d-pad wiring beyond the settings row, and `Joystick.kt` hat
   emission (0/2/4/6 + odd diagonals) against the descriptor's declared 0–7 range.
-- Test coverage for the setter re-register behaviour and for `reportFor`/`descriptorFor`
-  switching mid-session.
+- Test coverage for the manager's setter re-register behaviour (the pure policy is covered;
+  the Android-coupled unregister/re-register path is verified on-device only).
 - Palm/large-contact filtering in `TouchpadGestures.kt` (only the `maxPoints == 3` guard at
   lines 235 and 274) — identified, not written up.
