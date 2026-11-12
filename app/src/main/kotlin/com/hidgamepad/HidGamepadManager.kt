@@ -144,6 +144,10 @@ class HidGamepadManager(context: Context) {
     private val _pairedProfile = MutableStateFlow(HidProfile.COMPOSITE)
     val pairedProfile: StateFlow<HidProfile> = _pairedProfile
 
+    /** True while the host has its Caps Lock LED on, per the host's LED output report. */
+    private val _capsLockLed = MutableStateFlow(false)
+    val capsLockLed: StateFlow<Boolean> = _capsLockLed
+
     /** True while a profile change is tearing the old registration down to publish a new one. */
     private var reregisterPending = false
 
@@ -455,6 +459,7 @@ class HidGamepadManager(context: Context) {
                 hostDevice = null
                 lastGamepadReport = null
                 lastKeyboardReport = null
+                _capsLockLed.value = false
                 stopHeartbeat()
                 stopConnectionPoll()
                 _status.value = Status.Unregistered
@@ -487,6 +492,7 @@ class HidGamepadManager(context: Context) {
                     }
                 }
                 BluetoothProfile.STATE_DISCONNECTED, BluetoothProfile.STATE_DISCONNECTING -> {
+                    _capsLockLed.value = false
                     if (hostDevice != null && device.address != hostDevice?.address) {
                         Log.i(TAG, "ignoring disconnect for non-active host ${deviceName(device)}")
                     } else {
@@ -503,6 +509,38 @@ class HidGamepadManager(context: Context) {
                     }
                 }
             }
+        }
+        override fun onSetReport(
+            device: BluetoothDevice,
+            reportType: Byte,
+            reportId: Byte,
+            report: ByteArray,
+        ) {
+            Log.i(
+                TAG,
+                "onSetReport type=$reportType id=$reportId from=${deviceName(device)} len=${report.size}",
+            )
+            if (reportType == BluetoothHidDevice.REPORT_TYPE_OUTPUT && reportId.toInt() == KEYBOARD_REPORT_ID) {
+                updateCapsLockLed(report)
+            }
+        }
+
+        override fun onInterruptData(device: BluetoothDevice, reportId: Byte, data: ByteArray) {
+            Log.i(
+                TAG,
+                "onInterruptData id=$reportId from=${deviceName(device)} len=${data.size}",
+            )
+            if (reportId.toInt() == KEYBOARD_REPORT_ID) {
+                updateCapsLockLed(data)
+            }
+        }
+    }
+
+    private fun updateCapsLockLed(report: ByteArray) {
+        val caps = capsLockLedBit(report)
+        if (_capsLockLed.value != caps) {
+            Log.i(TAG, "caps lock LED ${if (caps) "on" else "off"}")
+            _capsLockLed.value = caps
         }
     }
 
@@ -595,6 +633,7 @@ class HidGamepadManager(context: Context) {
                 hostDevice = null
                 lastGamepadReport = null
                 lastKeyboardReport = null
+                _capsLockLed.value = false
                 _status.value = if (appRegistered) Status.ConnectTimedOut(name) else Status.Unregistered
             }
         }

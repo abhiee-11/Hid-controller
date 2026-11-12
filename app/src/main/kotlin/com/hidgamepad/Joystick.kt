@@ -561,6 +561,8 @@ fun KeyboardKeyButton(
     onDown: () -> Unit,
     onUp: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Draws a glowing dot in the top-right corner while the key is active (CapsLock). */
+    indicator: Boolean = false,
 ) {
     var pressed by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -603,6 +605,15 @@ fun KeyboardKeyButton(
                 cornerRadius = keyCorner,
                 style = Stroke(width = HAIRLINE.toPx()),
             )
+            if (indicator) {
+                // A soft halo plus a solid core, in the corner the label leaves free.
+                val r = 2.5f.dp.toPx()
+                val inset = r + 3f.dp.toPx()
+                val dot = Offset(size.width - inset, inset)
+                drawCircle(Color.White.copy(alpha = 0.22f), radius = r * 2.6f, center = dot)
+                drawCircle(Color.White.copy(alpha = 0.45f), radius = r * 1.7f, center = dot)
+                drawCircle(Color.White, radius = r, center = dot)
+            }
         }
         Text(
             label,

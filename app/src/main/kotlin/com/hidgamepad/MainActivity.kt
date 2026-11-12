@@ -184,6 +184,7 @@ class MainActivity : ComponentActivity() {
                 if (permissionsGranted) {
                     val status by manager.status.collectAsState()
                     val pairedProfile by manager.pairedProfile.collectAsState()
+                    val capsLockLed by manager.capsLockLed.collectAsState()
                     GamepadScreen(
                         statusText = if (hidEnabled) statusLabel(status) else "HID off — turn the switch on to enable",
                         // The state word, without the host's name: the report travels to a
@@ -219,6 +220,7 @@ class MainActivity : ComponentActivity() {
                         onConfirmRepair = { manager.confirmRepaired() },
                         hidEnabled = hidEnabled,
                         onHidEnabledChange = { updateHidEnabled(it) },
+                        capsLockLed = capsLockLed,
                     )
                 } else {
                     Column(

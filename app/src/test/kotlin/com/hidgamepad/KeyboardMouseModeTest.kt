@@ -145,4 +145,24 @@ class KeyboardMouseModeTest {
         assertTrue(pairInstructions(HostType.WINDOWS).contains("Settings → Bluetooth & devices"))
         assertTrue(pairInstructions(HostType.ANDROID).contains("Some Android phones do not support"))
     }
+
+    @Test
+    fun `caps lock LED output report decodes the caps bit`() {
+        assertFalse(capsLockLedBit(byteArrayOf()))
+        assertFalse(capsLockLedBit(byteArrayOf(0x00)))
+        // Bit 0 is Num Lock, bit 1 is Caps Lock, bit 2 is Scroll Lock.
+        assertFalse(capsLockLedBit(byteArrayOf(0x01)))
+        assertTrue(capsLockLedBit(byteArrayOf(0x02)))
+        assertTrue(capsLockLedBit(byteArrayOf(0x06))) // Caps + Scroll
+        assertTrue(capsLockLedBit(byteArrayOf(0x03))) // Num + Caps
+    }
+
+    @Test
+    fun `caps lock key sits left of the win key`() {
+        val bottom = keyboardRows().last()
+        assertEquals("Caps", bottom[0].label)
+        assertEquals(KeyAction.Usage(KeyUsage.CAPSLOCK), bottom[0].action)
+        assertEquals("Win", bottom[1].label)
+        assertTrue(bottom[1].action is KeyAction.Modifier)
+    }
 }

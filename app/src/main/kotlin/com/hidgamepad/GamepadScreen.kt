@@ -142,6 +142,8 @@ fun GamepadScreen(
     onConfirmRepair: () -> Unit = {},
     hidEnabled: Boolean = true,
     onHidEnabledChange: (Boolean) -> Unit = {},
+    /** True while the host has its Caps Lock LED on (from the host's LED output report). */
+    capsLockLed: Boolean = false,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -378,6 +380,7 @@ fun GamepadScreen(
                 KeyboardStage(
                     modifiers = keyboardModifiers,
                     pressedKeys = keyboardKeys,
+                    capsLockLed = capsLockLed,
                     hapticsEnabled = hapticsEnabled,
                     hapticsStrength = hapticsStrength,
                     onModifier = { bit, down ->
@@ -861,6 +864,7 @@ private fun SettingsPanel(
 private fun KeyboardStage(
     modifiers: Int,
     pressedKeys: Set<Int>,
+    capsLockLed: Boolean,
     hapticsEnabled: Boolean,
     hapticsStrength: Float,
     onModifier: (Int, Boolean) -> Unit,
@@ -881,6 +885,10 @@ private fun KeyboardStage(
                 Row(Modifier.fillMaxWidth().height(keyboardRowHeight), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (cap in row) {
                         val action = cap.action
+                        // The Caps key's dot mirrors the host's LED output report, not a local
+                        // latch, so it is lit exactly while the host has caps lock on.
+                        val isCaps =
+                            action is KeyAction.Usage && action.usage == KeyUsage.CAPSLOCK
                         val active = when (action) {
                             is KeyAction.Modifier -> (modifiers and action.bit) != 0
                             is KeyAction.Usage -> action.usage in pressedKeys
@@ -902,6 +910,7 @@ private fun KeyboardStage(
                                     is KeyAction.Usage -> onKey(action.usage, false)
                                 }
                             },
+                            indicator = isCaps && capsLockLed,
                             modifier = Modifier.weight(cap.weight).fillMaxHeight(),
                         )
                     }

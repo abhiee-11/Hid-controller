@@ -185,6 +185,7 @@ object KeyUsage {
     const val BACKSPACE = 0x2A
     const val TAB = 0x2B
     const val SPACE = 0x2C
+    const val CAPSLOCK = 0x39
     const val RIGHT = 0x4F
     const val LEFT = 0x50
     const val DOWN = 0x51
@@ -206,6 +207,17 @@ object KeyUsage {
     const val F11 = 0x44
     const val F12 = 0x45
 }
+/**
+ * Decode the Caps Lock bit from an LED output report.
+ *
+ * The host signals keyboard LEDs with report ID 1 and a payload whose low bits hold one bit per
+ * LED usage, in descriptor order: bit0 = Num Lock, bit1 = Caps Lock, bit2 = Scroll Lock,
+ * bit3 = Compose, bit4 = Kana. An empty payload means the host stopped sending LED reports, so
+ * caps reads as off.
+ */
+fun capsLockLedBit(data: ByteArray): Boolean =
+    data.isNotEmpty() && (data[0].toInt() and 0x02) != 0
+
 data class KeyboardState(
     val modifiers: Int = 0,
     val pressedKeys: Set<Int> = emptySet(),
@@ -312,7 +324,7 @@ private val DESCRIPTOR_PATTERN = intArrayOf(
     0x95, 0x01,       //   Report Count (1)
     0x75, 0x08,       //   Report Size (8)
     0x81, 0x01,       //   Input (Constant, Variable, Absolute)
-    // Optional LED output report (not consumed by the controller).
+    // LED output report: consumed by the app to drive the on-screen CapsLock indicator.
     0x05, 0x08,       //   Usage Page (LED)
     0x19, 0x01,       //   Usage Minimum (Num Lock)
     0x29, 0x05,       //   Usage Maximum (Kana)

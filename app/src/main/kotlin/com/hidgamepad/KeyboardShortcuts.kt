@@ -62,13 +62,15 @@ fun keyboardRows(): List<List<KeyCap>> = listOf(
         cap("B", KeyUsage.B), cap("N", KeyUsage.N), cap("M", KeyUsage.M),
         cap("Alt", KeyAction.Modifier(MOD_LEFT_ALT)),
     ),
-    // Win sits at the bottom-left, next to Space; the arrow keys are narrow so Space gets most
-    // of the row.
+    // Caps sits at the left of Win, next to Space; the arrow keys are narrow so Space gets
+    // most of the row. Caps is a plain HID CapsLock usage: the host toggles its own caps
+    // state and reports it back on the LED output report.
     listOf(
+        cap("Caps", KeyUsage.CAPSLOCK),
         cap("Win", KeyAction.Modifier(MOD_LEFT_GUI)),
         cap("Space", KeyUsage.SPACE, 2f),
-        cap("←", KeyUsage.LEFT, 0.5f), cap("↑", KeyUsage.UP, 0.5f),
-        cap("↓", KeyUsage.DOWN, 0.5f), cap("→", KeyUsage.RIGHT, 0.5f),
+        cap("\u2190", KeyUsage.LEFT, 0.5f), cap("\u2191", KeyUsage.UP, 0.5f),
+        cap("\u2193", KeyUsage.DOWN, 0.5f), cap("\u2192", KeyUsage.RIGHT, 0.5f),
     ),
 )
 
