@@ -52,6 +52,9 @@ class MainActivity : ComponentActivity() {
     private var hapticsStrength by mutableStateOf(1.0f)
     private var permissionsGranted by mutableStateOf(false)
 
+    /** The master HID switch. Off unregisters the HID device and stops the service. */
+    private var hidEnabled by mutableStateOf(true)
+
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
             val granted = grants.values.all { it }
@@ -74,6 +77,10 @@ class MainActivity : ComponentActivity() {
     private var receiverRegistered = false
 
     private fun ensureHidService() {
+        if (!shouldRunHidService(hidEnabled, permissionsGranted)) {
+            Log.i("HidGamepad", "activity: HID is off — not starting the service")
+            return
+        }
         Log.i("HidGamepad", "activity: ensureHidService")
         manager = HidRuntime.get(this)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -84,8 +91,35 @@ class MainActivity : ComponentActivity() {
         manager.start()
     }
 
+    /**
+     * The user flipped the master HID switch. Off releases every input, unregisters the HID
+     * device and stops the service (removing its notification); on starts it again. The
+     * preference is persisted so a phone left off stays off across a restart.
+     */
+    private fun updateHidEnabled(enabled: Boolean) {
+        if (hidEnabled == enabled) return
+        hidEnabled = enabled
+        getSharedPreferences("hid_gamepad", MODE_PRIVATE)
+            .edit().putBoolean("hid_enabled", enabled).apply()
+        if (enabled) {
+            Log.i("HidGamepad", "activity: HID switch ON")
+            if (permissionsGranted) ensureHidService()
+        } else {
+            Log.i("HidGamepad", "activity: HID switch OFF")
+            manager.releaseAllInputs()
+            manager.stop()
+            stopService(Intent(this, HidControllerService::class.java))
+        }
+    }
+
     private fun hasRequiredPermissions(): Boolean = REQUIRED_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun readHidEnabled(): Boolean {
+        val prefs = getSharedPreferences("hid_gamepad", MODE_PRIVATE)
+        val stored = if (prefs.contains("hid_enabled")) prefs.getBoolean("hid_enabled", true) else null
+        return hidEnabledFromStorage(stored)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -101,6 +135,7 @@ class MainActivity : ComponentActivity() {
         manager = HidRuntime.get(this)
         hapticsOn = getSharedPreferences("hid_gamepad", MODE_PRIVATE).getBoolean("haptics_on", true)
         hapticsStrength = getSharedPreferences("hid_gamepad", MODE_PRIVATE).getFloat("haptics_strength", 1.0f)
+        hidEnabled = readHidEnabled()
 
         val btFilter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -130,7 +165,7 @@ class MainActivity : ComponentActivity() {
                     val status by manager.status.collectAsState()
                     val pairedProfile by manager.pairedProfile.collectAsState()
                     GamepadScreen(
-                        statusText = statusLabel(status),
+                        statusText = if (hidEnabled) statusLabel(status) else "HID off — turn the switch on to enable",
                         bondedDevices = { manager.bondedDevices() },
                         onConnect = { device: android.bluetooth.BluetoothDevice -> manager.connect(device) },
                         onDiscoverable = {
@@ -159,6 +194,8 @@ class MainActivity : ComponentActivity() {
                         registeredProfile = pairedProfile,
                         onProfileChanged = { newProfile -> manager.hidProfile = newProfile },
                         onConfirmRepair = { manager.confirmRepaired() },
+                        hidEnabled = hidEnabled,
+                        onHidEnabledChange = { updateHidEnabled(it) },
                     )
                 } else {
                     Column(
@@ -196,6 +233,10 @@ class MainActivity : ComponentActivity() {
         if (granted != permissionsGranted) permissionsGranted = granted
         if (!granted) {
             Log.i("HidGamepad", "activity: onResume without Bluetooth permissions — not starting HID")
+            return
+        }
+        if (!shouldRunHidService(hidEnabled, granted)) {
+            Log.i("HidGamepad", "activity: onResume with HID switched off — leaving it off")
             return
         }
         ensureHidService()

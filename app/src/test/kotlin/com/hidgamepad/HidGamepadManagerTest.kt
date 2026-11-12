@@ -75,4 +75,35 @@ class HidGamepadManagerTest {
         assertFalse(shouldAdoptPluggedDevice(true, BluetoothProfile.STATE_CONNECTING))
         assertFalse(shouldAdoptPluggedDevice(true, BluetoothProfile.STATE_DISCONNECTED))
     }
+
+    @Test
+    fun `a fresh install has the HID switch on`() {
+        // Nothing stored yet: the controller has always started on launch, and it still should.
+        assertTrue(hidEnabledFromStorage(null))
+        assertTrue(hidEnabledFromStorage(true))
+    }
+
+    @Test
+    fun `a stored off survives a restart`() {
+        // The whole point of persisting the switch: a phone left off must not come back on.
+        assertFalse(hidEnabledFromStorage(false))
+    }
+
+    @Test
+    fun `the HID service runs only when enabled and permitted`() {
+        assertTrue(shouldRunHidService(enabled = true, permissionsGranted = true))
+        assertFalse(shouldRunHidService(enabled = false, permissionsGranted = true))
+        assertFalse(shouldRunHidService(enabled = true, permissionsGranted = false))
+        assertFalse(shouldRunHidService(enabled = false, permissionsGranted = false))
+    }
+
+    @Test
+    fun `a stopped manager never self-heals its HID proxy`() {
+        // stop() closes the proxy, which fires onServiceDisconnected; without this guard the
+        // 3 s self-heal re-registers the HID device and the master switch turns itself back on.
+        assertFalse(shouldSelfHealProxy(stopped = true, bluetoothEnabled = true))
+        assertFalse(shouldSelfHealProxy(stopped = true, bluetoothEnabled = false))
+        assertTrue(shouldSelfHealProxy(stopped = false, bluetoothEnabled = true))
+        assertFalse(shouldSelfHealProxy(stopped = false, bluetoothEnabled = false))
+    }
 }

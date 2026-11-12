@@ -11,7 +11,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.util.Log
 
 /**
@@ -28,7 +30,20 @@ class HidControllerService : Service() {
         const val TAG = "HidGamepad"
         const val CHANNEL_ID = "hid_controller"
         const val NOTIFICATION_ID = 7
+
+        /**
+         * The platform kills a service that was started with startForegroundService if it does
+         * not call startForeground within ~5 s. The notification is meant to appear only after
+         * registration succeeds, so this fallback fires just before that deadline if the
+         * registration callback has not arrived yet.
+         */
+        const val FOREGROUND_FALLBACK_MS = 4_000L
     }
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var foregroundShown = false
+
+    private val foregroundFallback = Runnable { showForeground() }
 
     /**
      * The activity receiver only exists while the UI exists. Without this service-level
@@ -50,7 +65,11 @@ class HidControllerService : Service() {
     override fun onCreate() {
         super.onCreate()
         Log.i(TAG, "service: onCreate — starting HID runtime")
-        HidRuntime.get(this).start()
+        val runtime = HidRuntime.get(this)
+        runtime.onRegistrationChanged = { registered ->
+            if (registered) showForeground()
+        }
+        runtime.start()
         val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(bluetoothStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -58,6 +77,17 @@ class HidControllerService : Service() {
             registerReceiver(bluetoothStateReceiver, filter)
         }
         createNotificationChannel()
+        // The service exists only to keep a registered HID app alive, so the notification is
+        // shown once registration succeeds — never while the app is still unregistered.
+        if (runtime.isRegistered) showForeground()
+        mainHandler.postDelayed(foregroundFallback, FOREGROUND_FALLBACK_MS)
+    }
+
+    private fun showForeground() {
+        if (foregroundShown) return
+        foregroundShown = true
+        mainHandler.removeCallbacks(foregroundFallback)
+        Log.i(TAG, "service: HID registered — showing the persistent notification")
         startForeground(NOTIFICATION_ID, buildNotification())
     }
 
@@ -71,10 +101,16 @@ class HidControllerService : Service() {
 
     override fun onDestroy() {
         Log.i(TAG, "service: onDestroy — unregistering HID runtime")
+        mainHandler.removeCallbacks(foregroundFallback)
+        HidRuntime.get(this).onRegistrationChanged = null
         try {
             unregisterReceiver(bluetoothStateReceiver)
         } catch (_: IllegalArgumentException) {
             // Receiver was never registered (create failed early); nothing to release.
+        }
+        if (foregroundShown) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            foregroundShown = false
         }
         HidRuntime.stop()
         super.onDestroy()
@@ -121,28 +157,29 @@ object HidRuntime {
     var manager: HidGamepadManager? = null
         private set
 
-    @Volatile
-    private var contextRef: Context? = null
-
     fun get(context: Context): HidGamepadManager {
         val existing = manager
         if (existing != null) return existing
         synchronized(this) {
             val again = manager
             if (again != null) return again
-            val appContext = context.applicationContext
-            contextRef = appContext
-            val created = HidGamepadManager(appContext)
+            val created = HidGamepadManager(context.applicationContext)
             manager = created
             return created
         }
     }
 
+    /**
+     * Stops the manager but keeps the instance alive.
+     *
+     * The activity's Compose UI collects [HidGamepadManager.status] and
+     * [HidGamepadManager.pairedProfile]; discarding the instance would leave the UI bound to a
+     * dead manager's flows after an off→on cycle. The manager is fully restartable, so the
+     * same instance is reused when HID is switched back on.
+     */
     fun stop() {
         synchronized(this) {
             manager?.stop()
-            manager = null
-            contextRef = null
         }
     }
 }

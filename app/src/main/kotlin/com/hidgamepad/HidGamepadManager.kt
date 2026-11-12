@@ -33,6 +33,24 @@ fun hostConnectionUsable(connectionState: Int): Boolean =
 fun shouldAdoptPluggedDevice(registered: Boolean, connectionState: Int): Boolean =
     registered && hostConnectionUsable(connectionState)
 
+/**
+ * The master HID switch, read from storage. A fresh install has nothing stored and starts
+ * with HID on, matching the app's behaviour before the switch existed.
+ */
+fun hidEnabledFromStorage(value: Boolean?): Boolean = value ?: true
+
+/** The single gate every HID start path consults: the switch must be on and permissions granted. */
+fun shouldRunHidService(enabled: Boolean, permissionsGranted: Boolean): Boolean =
+    enabled && permissionsGranted
+
+/**
+ * Whether a lost HID proxy should be re-fetched automatically. Never after an explicit
+ * [HidGamepadManager.stop]: that teardown itself disconnects the proxy, and re-fetching would
+ * silently turn the master switch back on.
+ */
+fun shouldSelfHealProxy(stopped: Boolean, bluetoothEnabled: Boolean): Boolean =
+    !stopped && bluetoothEnabled
+
 /** Bluetooth HID DEVICE profile wrapper: app registration, host connection lifecycle and
  *  report sending (change-triggered + 100 ms heartbeat while connected). All Bluetooth calls
  *  assume the runtime permissions have been granted — MainActivity gates that. */
@@ -56,6 +74,15 @@ class HidGamepadManager(context: Context) {
 
     private val _status = MutableStateFlow<Status>(Status.Unregistered)
     val status: StateFlow<Status> = _status
+
+    /**
+     * Fired on the main thread whenever the HID app registration changes. The foreground
+     * service uses it to show its notification only after registration actually succeeds.
+     */
+    var onRegistrationChanged: ((Boolean) -> Unit)? = null
+
+    /** Whether the HID app is currently registered with the stack. */
+    val isRegistered: Boolean get() = appRegistered
 
     private val appContext = context.applicationContext
     private val bluetoothManager = appContext.getSystemService(BluetoothManager::class.java)
@@ -106,6 +133,13 @@ class HidGamepadManager(context: Context) {
      * the stack rejects the duplicate and schedules a spurious retry. */
     private var registerInFlight = false
     private var proxyPending = false
+
+    /**
+     * True after an explicit [stop]. The proxy teardown in [stop] fires
+     * `onServiceDisconnected`, whose self-heal would otherwise re-register the HID device
+     * seconds later — turning the master switch back on by itself.
+     */
+    private var stopped = false
     private var hostDevice: BluetoothDevice? = null
     private var lastGamepadReport: ByteArray? = null
     private var lastKeyboardReport: ByteArray? = null
@@ -201,6 +235,7 @@ class HidGamepadManager(context: Context) {
 
     /** Fetch the HID DEVICE proxy, then register the app (SDP record + descriptor). */
     fun start() {
+        stopped = false
         loadStoredProfile()
         val a = adapter ?: run {
             Log.w(TAG, "start(): no Bluetooth adapter — HID device unsupported")
@@ -272,7 +307,10 @@ class HidGamepadManager(context: Context) {
             stopConnectionPoll()
             _status.value = if (bluetoothEnabled()) Status.Unregistered else Status.BluetoothOff
             // Self-heal: if Bluetooth is still on but the proxy died silently, fetch it again.
-            if (bluetoothEnabled()) mainHandler.postDelayed({ start() }, RETRY_MS)
+            // Skip it after an explicit stop(), which is the master switch being turned off.
+            if (shouldSelfHealProxy(stopped, bluetoothEnabled())) {
+                mainHandler.postDelayed({ start() }, RETRY_MS)
+            }
         }
     }
 
@@ -366,6 +404,7 @@ class HidGamepadManager(context: Context) {
             Log.i(TAG, "onAppStatusChanged registered=$registered plugged=${pluggedDevice?.let { deviceName(it) }}")
             registerInFlight = false
             appRegistered = registered
+            onRegistrationChanged?.invoke(registered)
             if (registered) {
                 reregisterPending = false
                 registerRetryCount = 0
@@ -704,6 +743,8 @@ class HidGamepadManager(context: Context) {
 
     /** Unregister the HID app and release the profile proxy; safe to call repeatedly. */
     fun stop() {
+        Log.i(TAG, "stop(): unregistering and releasing the HID proxy")
+        stopped = true
         cancelConnectTimeout()
         stopConnectionPoll()
         stopHeartbeat()

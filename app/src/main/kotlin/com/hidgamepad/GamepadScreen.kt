@@ -22,6 +22,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -124,6 +125,8 @@ fun GamepadScreen(
     registeredProfile: HidProfile = HidProfile.COMPOSITE,
     onProfileChanged: (HidProfile) -> Unit = {},
     onConfirmRepair: () -> Unit = {},
+    hidEnabled: Boolean = true,
+    onHidEnabledChange: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -479,6 +482,8 @@ fun GamepadScreen(
                     onProfileChanged(newProfile)
                 },
                 onConfirmRepair = onConfirmRepair,
+                hidEnabled = hidEnabled,
+                onHidEnabledChange = onHidEnabledChange,
                 onHaptics = onHapticsChange,
                 onHapticsStrength = onHapticsStrengthChange,
                 onTilt = { enabled ->
@@ -603,6 +608,8 @@ private fun SettingsPanel(
     registeredProfile: HidProfile,
     onProfile: (HidProfile) -> Unit,
     onConfirmRepair: () -> Unit,
+    hidEnabled: Boolean,
+    onHidEnabledChange: (Boolean) -> Unit,
     onHaptics: (Boolean) -> Unit,
     onHapticsStrength: (Float) -> Unit,
     onTilt: (Boolean) -> Unit,
@@ -620,6 +627,22 @@ private fun SettingsPanel(
             Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE8EAF0), modifier = Modifier.weight(1f))
             Button(onClick = onClose, modifier = Modifier.height(48.dp)) { Text("Close") }
         }
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "HID controller: ${if (hidEnabled) "ON" else "OFF"}",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFFE8EAF0),
+                modifier = Modifier.weight(1f),
+            )
+            Switch(checked = hidEnabled, onCheckedChange = onHidEnabledChange)
+        }
+        Text(
+            "Off releases every input, unregisters the HID device and removes the notification. " +
+                "Phone Bluetooth and other Bluetooth connections are unaffected.",
+            fontSize = 11.sp,
+            color = Color(0xFF9AA1B2),
+        )
         Text("Connection", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE8EAF0))
         Text("Connected host: $statusText", fontSize = 12.sp, color = Color(0xFFC7CDD8))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
