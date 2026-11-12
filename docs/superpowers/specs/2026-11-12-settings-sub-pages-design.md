@@ -121,6 +121,12 @@ on while the other is off.
   in that composable is not touched. The glow needs only the current animation
   colour, passed in as a parameter.
 
+**Gesture**
+- A 4-finger double-tap anywhere on the Mouse-mode touchpad toggles the pad
+  glow on and off. It is a phone-local action (`PadAction.PadGlowToggle`) that
+  is consumed on the phone before the HID bridge — the host receives nothing,
+  and a 4-finger tap is a no-op on the wire today anyway.
+
 **Navigation**
 - `settingsSection` lives inside `SettingsPanel`; the panel decides list vs page.
 - Each page header has a back arrow that sets the section back to `null`.

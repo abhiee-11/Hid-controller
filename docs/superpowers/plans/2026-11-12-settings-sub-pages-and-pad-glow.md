@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Split the Settings sheet into a short list of four sub-pages (Connection, Controls, RGB backlight, Information) and add a fully independent RGB glow around the Mouse-mode touchpad's border.
+**Goal:** Split the Settings sheet into a short list of four sub-pages (Connection, Controls, RGB backlight, Information), add a fully independent RGB glow around the Mouse-mode touchpad's border, and let a 4-finger double-tap on the touchpad toggle that glow.
 
-**Architecture:** `SettingsPanel` in `GamepadScreen.kt` gains a remembered `SettingsSection?` (null = the list) and renders either the list or one page; no new composable parameters and no navigation library. The pad glow is a small pure colour function (`padGlowColor`) plus a halo drawn in `GestureTouchpad`'s existing Canvas; its settings live in their own `PadGlowConfig` persisted under `pad_glow_*` keys and shown as a second group on the RGB page.
+**Architecture:** `SettingsPanel` in `GamepadScreen.kt` gains a remembered `SettingsSection?` (null = the list) and renders either the list or one page; no new composable parameters and no navigation library. The pad glow is a small pure colour function (`padGlowColor`) plus a halo drawn in `GestureTouchpad`'s existing Canvas; its settings live in their own `PadGlowConfig` persisted under `pad_glow_*` keys and shown as a second group on the RGB page. The 4-finger toggle is a phone-local `PadAction.PadGlowToggle` the gesture pad intercepts before it reaches the HID bridge — the host never sees it.
 
 **Tech Stack:** Kotlin, Jetpack Compose (Canvas + `produceState` clock), SharedPreferences, JUnit4 (pure unit tests only — the suite has no Compose UI tests).
 
@@ -497,12 +497,92 @@ git commit -m "feat: mouse pad glow settings on the RGB page"
 
 ---
 
+### Task 6: 4-finger double-tap toggles the mouse pad glow
+
+**Files:**
+- Modify: `app/src/main/kotlin/com/hidgamepad/TouchpadGestures.kt` (new `PadAction.PadGlowToggle`; 4-finger tap double-tap detection)
+- Modify: `app/src/main/kotlin/com/hidgamepad/GestureTouchpad.kt` (new defaulted callback `onPadGlowToggle: () -> Unit = {}`; a local dispatch wrapper intercepts the toggle before the HID bridge)
+- Modify: `app/src/main/kotlin/com/hidgamepad/GamepadScreen.kt` (pass `onPadGlowToggle` in the MOUSE branch: `{ savePadGlow(padGlow.copy(enabled = !padGlow.enabled)) }`; touchpad hint gains the gesture)
+- Test: `app/src/test/kotlin/com/hidgamepad/TouchpadGestureTest.kt`
+
+**Interfaces:**
+- Consumes: `padGlow` / `savePadGlow` (Task 5).
+- Produces: `PadAction.PadGlowToggle` — a phone-local action, never sent to the host.
+
+**HID contract:** `PadGlowToggle` is consumed on the phone, before the bridge, and never reaches a report. Descriptors, encodings, and what a host receives are unchanged. A 4-finger tap is a no-op on the wire today, so this claims a gesture that was previously swallowed; a 4-finger swipe stays unset.
+
+- [ ] **Step 1: Write the failing tests**
+
+```kotlin
+    @Test
+    fun `four finger tap emits nothing`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f), pt(4, 220f, 200f)))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(120)))
+    }
+
+    @Test
+    fun `four finger double tap toggles the pad glow once`() {
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f), pt(4, 220f, 200f)))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(100)))
+        r.frame(fr(200, pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f), pt(4, 220f, 200f)))
+        assertEquals(listOf(PadAction.PadGlowToggle), r.frame(fr(300)))
+    }
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `.\gradlew.bat --console=plain testDebugUnitTest --tests "com.hidgamepad.TouchpadGestureTest"`
+Expected: FAIL — unresolved reference `PadGlowToggle`.
+
+- [ ] **Step 3: Add `PadAction.PadGlowToggle` and the double-tap detection**
+
+Add `data object PadGlowToggle : PadAction` to `PadAction`. Add `private var pendingPadGlowTapMs: Long? = null`. In `end()`, before the one-finger `button` logic, when the gesture is a tap (`nowMs - startMs <= TAP_TIMEOUT_MS && peakTravel <= TAP_SLOP_DP * density`) and `maxPoints >= 4`: read `pendingPadGlowTapMs`; if it is set and `nowMs - it <= DOUBLE_TAP_WINDOW_MS`, emit `PadGlowToggle` and clear it, else set it to `nowMs`; **skip the existing button branch entirely**. Clear `pendingPadGlowTapMs` in `reset()` and in `resetGesture()`. A 4-finger tap must never set `pendingTapMs` (leave the one-finger path alone).
+
+- [ ] **Step 4: Wire the callback in `GestureTouchpad`**
+
+Add `onPadGlowToggle: () -> Unit = {}` to the composable parameters. Add `val onPadGlowToggleNow by rememberUpdatedState(onPadGlowToggle)` and a local helper:
+
+```kotlin
+    fun dispatch(actions: List<PadAction>) {
+        if (actions.isEmpty()) return
+        if (actions.any { it is PadAction.PadGlowToggle }) onPadGlowToggleNow()
+        val remote = actions.filterNot { it is PadAction.PadGlowToggle }
+        if (remote.isNotEmpty()) bridge.dispatch(remote)
+    }
+```
+
+Replace every `bridge.dispatch(...)` call site in the file with `dispatch(...)` (the `fingerDown` 16 ms loop, the pointer input loop, the dispose path and the host-disconnected path).
+
+- [ ] **Step 5: Pass the toggle from the MOUSE branch**
+
+In `GamepadScreen.kt`'s `ControllerMode.MOUSE` branch, pass `onPadGlowToggle = { savePadGlow(padGlow.copy(enabled = !padGlow.enabled)) }` to `GestureTouchpad`, and extend the hint text to `… · 3-finger tap/swipe · 4-finger double-tap = glow`.
+
+- [ ] **Step 6: Build, test and verify on the device**
+
+Run: `.\gradlew.bat --console=plain testDebugUnitTest assembleDebug`
+Expected: BUILD SUCCESSFUL, tests=213 failures=0.
+
+Install. In Mouse mode, do a 4-finger double-tap: the border glow toggles on (with whatever effect/colour is configured; confirm it is Reactive or Static) and a second 4-finger double-tap toggles it off. Confirm the tap never sends anything to the host (check the report log line does not appear). If the keyboard backlight is off, confirm the pad glow works independently.
+
+- [ ] **Step 7: Leak scan and commit**
+
+```bash
+git add -A
+# Run the repo's leak scan (see AGENTS/notes): grep the staged diff for any
+# device serial, host Bluetooth name or MAC, or the report topic. Expect no matches.
+git commit -m "feat: 4-finger double-tap toggles the mouse pad glow"
+```
+
+---
+
 ## Self-Review
 
-**Spec coverage:** sub-pages list + four pages (Task 2); Back steps (Task 1, consumed by Task 2's header and by the pending Back-navigation task); pad glow independent settings (Tasks 3, 5); pad glow drawing only in Mouse mode (Task 4); defensive persistence (Task 5); reduced five-effect set (Task 3); `PadColors`-only + dp-only (Global Constraints). No gaps.
+**Spec coverage:** sub-pages list + four pages (Task 2); Back steps (Task 1, consumed by Task 2's header and by the pending Back-navigation task); pad glow independent settings (Tasks 3, 5); pad glow drawing only in Mouse mode (Task 4); defensive persistence (Task 5); reduced five-effect set (Task 3); `PadColors`-only + dp-only (Global Constraints); 4-finger double-tap toggle (Task 6, phone-local, no HID change). No gaps.
 
 **Step scan:** every step names a file and a concrete action; code appears only where the signature and tests do not determine the body.
 
-**Type consistency:** `PadGlowConfig`, `PadGlowEffect`, `padGlowColor`, `SettingsSection`, `settingsBackStep`/`SettingsBack`, and `savePadGlow`/`onPadGlow` are used with the same names and shapes in every task that touches them. `GestureTouchpad`'s new parameters are defaulted, so the other call sites are unaffected.
+**Type consistency:** `PadGlowConfig`, `PadGlowEffect`, `padGlowColor`, `SettingsSection`, `settingsBackStep`/`SettingsBack`, `savePadGlow`/`onPadGlow`, `PadAction.PadGlowToggle` and `onPadGlowToggle` are used with the same names and shapes in every task that touches them. `GestureTouchpad`'s new parameters (`padGlow`, `padGlowTimeMillis`, `onPadGlowToggle`) are defaulted, so the other call sites are unaffected.
 
-**Review Focus:** each of the five lines has a test in Task 1 or Task 3; the scrolling line is covered by Task 2 keeping `verticalScroll` on the shared Column.
+**Review Focus:** each of the five lines has a test in Task 1 or Task 3; the scrolling line is covered by Task 2 keeping `verticalScroll` on the shared Column; the 4-finger toggle is covered by the two tests in Task 6 and stays off the wire.
