@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The app draws its whole UI in Compose, so this theme only styles the window before the
+      first frame. It stays a platform theme on purpose: the project has no AppCompat or
+      Material Components dependency, and Compose provides the real theme.
+    -->
+    <style name="Theme.HidController" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/splash_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:windowActivityTransitions">false</item>
+    </style>
+</resources>

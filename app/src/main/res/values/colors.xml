@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The launcher icon's background layer: the app's deep charcoal. -->
+    <color name="ic_launcher_background">#141519</color>
+    <!-- The window background behind the first frame, so launching does not flash white. -->
+    <color name="splash_background">#141519</color>
+</resources>
