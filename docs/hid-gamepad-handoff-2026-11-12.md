@@ -5,9 +5,13 @@ Pick this up tomorrow. Everything below is measured, not inferred, unless marked
 
 ## Where things stand
 
-- `main` is at the merge commit `1dafd3c`, which folds in `feat/touchpad-gestures`
-  (identical tree). Everything is local only — **never pushed**: `origin/main` is still at
-  `06d552e`, `origin/feat/touchpad-gestures` at `3e72aef`.
+- `main` holds the whole `feat/touchpad-gestures` work as a linear history — the branch tip
+  `7f7d49d` is an ancestor of `main` — plus the close-out commits on top. Everything is local
+  only — **never pushed**: `origin/main` is still at `06d552e`, `origin/feat/touchpad-gestures`
+  at `3e72aef`. Main's four pre-merge commits were dropped rather than merged: they were the
+  same three PC-host fixes applied to a different base plus a report the branch already
+  carried, and they were the only commits in the repo still holding the raw device serials.
+  `main`'s history now contains none.
 - Build + tests: `.\gradlew.bat --console=plain testDebugUnitTest assembleDebug`
   → **143 tests, 0 failures**.
 - **The L2/R2 triggers are digital again** (commit `d7ca8a2`): a press anywhere on the strip
@@ -194,11 +198,13 @@ Chrome 157 on the tablet (`<TABLET_SERIAL>`) **does** expose the phone to web pa
 5. **RESOLVED — the whole-branch review findings are recorded.** The review subagent
    (`ses_e3460ba5bffeM8tmO2DwSeGe97`) delivered after all; its findings are de-duplicated and
    ranked in "Review findings" below, with the blocker and the two high findings fixed.
-6. **RESOLVED (2026-11-12) — the branch is merged.** `main` is at `1dafd3c`, a merge of
-   `feat/touchpad-gestures` whose tree is identical to the branch tip. Main's four commits
-   were duplicated history (the same three PC-host fixes plus the 2026-11-09 report), and
-   main's copy of the report still carried the real device serials — folding the branch in
-   redacted them. Still local only: nothing pushed.
+6. **RESOLVED (2026-11-12) — the branch is merged into `main`, and main's history is clean.**
+   `main` now carries the branch's work as a linear history (branch tip `7f7d49d` is an
+   ancestor of `main`) plus the close-out commits on top. Main's four pre-merge commits were
+   dropped rather than merged: they were duplicated history (the same three PC-host fixes plus
+   the 2026-11-09 report), and they were the only commits in the repository still holding the
+   raw device serials — so dropping them leaves **no raw serial anywhere in main's history**.
+   Still local only: nothing pushed.
 7. **The trigger never reaches an Android host as a button.** `ABS_GAS`/`ABS_BRAKE` reach the
    host as axes (`AXIS_RTRIGGER`/`AXIS_LTRIGGER` via `Generic.kl`) and no key event is ever
    generated, so a game that reads the trigger strictly as `KEYCODE_BUTTON_R2` sees nothing.

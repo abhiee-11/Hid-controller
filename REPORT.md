@@ -309,11 +309,16 @@ measurements are in `docs/hid-gamepad-handoff-2026-11-12.md`.
 
 ## Commits (local only, never pushed)
 
-The branch `feat/touchpad-gestures` is merged into `main`; `main` is at the merge commit
-`1dafd3c`, whose tree is identical to the branch tip. Nothing has been pushed: `origin/main`
-is still at `06d552e` and `origin/feat/touchpad-gestures` at `3e72aef`.
+`main` holds the whole `feat/touchpad-gestures` work as a linear history — the branch tip
+`7f7d49d` is an ancestor of `main` — plus the close-out commits on top. Main's four
+pre-merge commits were **dropped rather than merged**: they were the same three PC-host fixes
+applied to a different base plus a report whose content the branch already carried, and they
+were the only commits in the repository still holding the raw device serials. Dropping them
+leaves no raw serial anywhere in `main`'s history, so the branch is safe to publish as it
+stands. Nothing has been pushed: `origin/main` is still at `06d552e` and
+`origin/feat/touchpad-gestures` at `3e72aef`.
 
-Latest commits on `feat/touchpad-gestures` (now also in `main`):
+Latest commits on `feat/touchpad-gestures` (all now in `main`):
 
 `7f7d49d` docs(gamepad): record the digital trigger fix and its measurement
 `d7ca8a2` fix(gamepad): make the L2/R2 triggers digital
