@@ -12,7 +12,7 @@ enum class HidProfile {
 
     /**
      * A dedicated gamepad whose buttons and axes follow the W3C standard layout, so
-     * DirectInput and browser hosts expose a real gamepad.
+     * DirectInput hosts expose a real gamepad.
      */
     GAMEPAD_ONLY,
 }
@@ -20,17 +20,27 @@ enum class HidProfile {
 /** The gamepad-only report: 2 button bytes, four 16-bit axes, two trigger bytes, one hat. */
 const val GAMEPAD_ONLY_REPORT_SIZE = 13
 
-fun hidProfileFromStorage(name: String?): HidProfile =
-    runCatching { HidProfile.valueOf(name ?: "") }.getOrDefault(HidProfile.COMPOSITE)
-
 /**
  * The profile the host was last paired with, read from storage.
  *
  * Defaults to [selected] on first run: a fresh install has no stale host cache, so the
- * profile the user picked is also the one the host will pair with.
+ * profile the host type derives is also the one the host will pair with.
  */
 fun pairedProfileFromStorage(name: String?, selected: HidProfile): HidProfile =
     name?.let { runCatching { HidProfile.valueOf(it) }.getOrNull() } ?: selected
+
+/**
+ * The HID descriptor the host needs, derived from the connection choice.
+ *
+ * The two hosts want different orderings: Android's kernel maps gamepad buttons positionally,
+ * so the composite descriptor's `Btn` order is correct, while Windows maps them by
+ * declaration order, so the gamepad-only W3C order is correct. Deriving the profile here
+ * removes the separate picker that could be set to a combination that works on neither.
+ */
+fun profileForHostType(hostType: HostType): HidProfile = when (hostType) {
+    HostType.ANDROID -> HidProfile.COMPOSITE
+    HostType.WINDOWS -> HidProfile.GAMEPAD_ONLY
+}
 
 /** Maps a canonical button bit to its W3C standard-layout wire bit, or -1 if unmapped. */
 fun w3cWireBit(canonicalBit: Int): Int = when (canonicalBit) {
@@ -49,9 +59,9 @@ fun w3cWireBit(canonicalBit: Int): Int = when (canonicalBit) {
 }
 
 /**
- * True when the profile the user selected is not the one the host was paired with.
+ * True when the profile the host type derives is not the one the host was paired with.
  *
- * The host caches the report descriptor at pairing time, so a profile change only takes
+ * The host caches the report descriptor at pairing time, so a host-type change only takes
  * effect after the user removes the phone and pairs it again. Until then the app has to
  * say so, or the user sees "nothing changed" and concludes the feature is broken.
  */

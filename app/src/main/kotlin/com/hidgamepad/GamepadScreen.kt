@@ -133,7 +133,6 @@ fun GamepadScreen(
     val prefs = remember { context.getSharedPreferences("hid_gamepad", Context.MODE_PRIVATE) }
     var hostType by remember { mutableStateOf(hostTypeFromStorage(prefs.getString("host_type", null))) }
     var controllerMode by remember { mutableStateOf(controllerModeFromStorage(prefs.getString("controller_mode", null))) }
-    var profile by remember { mutableStateOf(hidProfileFromStorage(prefs.getString("hid_profile", null))) }
     var mouseSensitivity by remember { mutableStateOf(prefs.getFloat("mouse_sensitivity", 1f)) }
     var needsSetup by remember {
         mutableStateOf(needsOnboarding(prefs.getBoolean("setup_complete", false), prefs.getString("last_host_address", null)))
@@ -149,6 +148,8 @@ fun GamepadScreen(
             onHostType = { newType ->
                 hostType = newType
                 prefs.edit().putString("host_type", newType.name).apply()
+                // The connection choice also picks the descriptor the host will pair with.
+                onProfileChanged(profileForHostType(newType))
             },
             onMode = { newMode ->
                 controllerMode = newMode
@@ -323,6 +324,7 @@ fun GamepadScreen(
                                         if (detected != hostType) {
                                             hostType = detected
                                             prefs.edit().putString("host_type", detected.name).apply()
+                                            onProfileChanged(profileForHostType(detected))
                                         }
                                     }
                                 },
@@ -473,14 +475,10 @@ fun GamepadScreen(
                 onHostType = { newType ->
                     hostType = newType
                     prefs.edit().putString("host_type", newType.name).apply()
+                    // A different host means a different descriptor, so the manager re-registers.
+                    onProfileChanged(profileForHostType(newType))
                 },
-                profile = profile,
                 registeredProfile = registeredProfile,
-                onProfile = { newProfile ->
-                    profile = newProfile
-                    prefs.edit().putString("hid_profile", newProfile.name).apply()
-                    onProfileChanged(newProfile)
-                },
                 onConfirmRepair = onConfirmRepair,
                 hidEnabled = hidEnabled,
                 onHidEnabledChange = onHidEnabledChange,
@@ -604,9 +602,7 @@ private fun SettingsPanel(
     onRunSetup: () -> Unit,
     onMode: (ControllerMode) -> Unit,
     onHostType: (HostType) -> Unit,
-    profile: HidProfile,
     registeredProfile: HidProfile,
-    onProfile: (HidProfile) -> Unit,
     onConfirmRepair: () -> Unit,
     hidEnabled: Boolean,
     onHidEnabledChange: (Boolean) -> Unit,
@@ -619,6 +615,7 @@ private fun SettingsPanel(
     onMouseSensitivity: (Float) -> Unit,
     onClearInputs: () -> Unit,
 ) {
+    val profile = profileForHostType(hostType)
     Column(
         Modifier.fillMaxSize().background(Color(0xFF1A1B21)).padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -665,19 +662,10 @@ private fun SettingsPanel(
             }
         }
         Text("Decides what three-finger swipes send. Change it if the swipes do nothing.", fontSize = 11.sp, color = Color(0xFF9AA1B2))
-        Text("HID profile: ${profileLabel(profile)}", fontSize = 12.sp, color = Color(0xFFC7CDD8))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (type in HidProfile.entries) {
-                Button(onClick = { onProfile(type) }, modifier = Modifier.height(48.dp)) { Text(profileLabel(type)) }
-            }
-        }
         Text(
-            "Gamepad only is what games need: a phone that also acts as a keyboard and mouse is not recognised as a gamepad by every host.",
-            fontSize = 11.sp,
-            color = Color(0xFF9AA1B2),
-        )
-        Text(
-            "Changing the profile needs a re-pair: the host caches the HID descriptor at pairing time.",
+            "It also picks the HID descriptor the host needs: Android gets ${profileLabel(HidProfile.COMPOSITE)}, " +
+                "Windows gets ${profileLabel(HidProfile.GAMEPAD_ONLY)}. Changing it needs a re-pair, because " +
+                "the host caches the descriptor at pairing time.",
             fontSize = 11.sp,
             color = Color(0xFFE0B75A),
         )

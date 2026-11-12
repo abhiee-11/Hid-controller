@@ -170,14 +170,15 @@ class HidGamepadManager(context: Context) {
     }
 
     /**
-     * Loads the profile the user chose, so a registration started by the foreground
-     * service - before the settings screen is ever opened - uses the right descriptor.
+     * Loads the profile that matches the connection the user chose, so a registration started
+     * by the foreground service - before the settings screen is ever opened - uses the right
+     * descriptor. The profile is derived from the host type; there is no separate pref.
      */
     private fun loadStoredProfile() {
         val prefs = appContext.getSharedPreferences("hid_gamepad", Context.MODE_PRIVATE)
-        val profile = hidProfileFromStorage(prefs.getString("hid_profile", null))
+        val profile = profileForHostType(hostTypeFromStorage(prefs.getString("host_type", null)))
         if (profile != hidProfile) {
-            Log.i(TAG, "restoring stored HID profile: $profile")
+            Log.i(TAG, "restoring HID profile for host type: $profile")
             hidProfile = profile
         }
         // The host's descriptor is the one it was paired with, which can lag the selection.

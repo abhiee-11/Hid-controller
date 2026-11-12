@@ -123,13 +123,34 @@ class GamepadProfileTest {
     }
 
     @Test
-    fun `profile round trips through storage`() {
-        assertEquals(HidProfile.COMPOSITE, hidProfileFromStorage(null))
-        assertEquals(HidProfile.COMPOSITE, hidProfileFromStorage("COMPOSITE"))
-        assertEquals(HidProfile.GAMEPAD_ONLY, hidProfileFromStorage("GAMEPAD_ONLY"))
-        // An unrecognised stored value must fall back to the profile that has always
-        // worked, not silently switch the user's pairing to a different descriptor.
-        assertEquals(HidProfile.COMPOSITE, hidProfileFromStorage("nonsense"))
+    fun `the host type chooses the profile`() {
+        // One choice to make. Android maps gamepad buttons positionally (kernel gamepad map),
+        // Windows maps them by declaration order (DirectInput), so the descriptor follows the
+        // host instead of a separate picker that can be set to a broken combination.
+        assertEquals(HidProfile.COMPOSITE, profileForHostType(HostType.ANDROID))
+        assertEquals(HidProfile.GAMEPAD_ONLY, profileForHostType(HostType.WINDOWS))
+    }
+
+    @Test
+    fun `switching the host type asks for a re-pair`() {
+        // Changing the connection changes the descriptor, and the host caches the descriptor
+        // at pairing time, so the switch cannot take effect until the user re-pairs.
+        val android = profileForHostType(HostType.ANDROID)
+        val windows = profileForHostType(HostType.WINDOWS)
+        assertTrue(profileNeedsRepair(current = windows, registered = android))
+        assertTrue(profileNeedsRepair(current = android, registered = windows))
+        assertFalse(profileNeedsRepair(current = android, registered = android))
+        assertFalse(profileNeedsRepair(current = windows, registered = windows))
+    }
+
+    @Test
+    fun `the paired profile still wins for encoding after a host type switch`() {
+        // The host keeps the descriptor it paired with, so a switch to the Windows profile
+        // without a re-pair must still send the composite report the host can decode.
+        val android = profileForHostType(HostType.ANDROID)
+        val windows = profileForHostType(HostType.WINDOWS)
+        assertEquals(9, reportForHost(selected = windows, paired = android, state = GamepadState()).size)
+        assertEquals(13, reportForHost(selected = windows, paired = windows, state = GamepadState()).size)
     }
 
     @Test
