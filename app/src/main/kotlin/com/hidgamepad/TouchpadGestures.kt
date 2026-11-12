@@ -29,7 +29,17 @@ const val TAP_SLOP_DP = 8f
 const val DOUBLE_TAP_WINDOW_MS = 300L
 const val DRAG_ARM_MS = 250L
 const val SCROLL_START_DP = 10f
-const val SCROLL_STEP_DP = 20f
+
+/**
+ * Finger travel per wheel notch at ×1.00 sensitivity.
+ *
+ * The scroll step is divided by the sensitivity, so the same slider that sets the pointer
+ * speed also sets the scroll speed: twice the sensitivity is twice the notches per dp of
+ * travel. Halved from 20f, which made a notch cost 37.5 px of finger travel on a 1.875x
+ * screen.
+ */
+const val SCROLL_STEP_DP = 10f
+
 const val PINCH_START_DP = 12f
 const val PINCH_STEP_DP = 15f
 const val SWIPE_DISTANCE_DP = 40f
@@ -248,7 +258,11 @@ class TouchpadGestureRecognizer(
     }
 
     private fun emitScroll(out: MutableList<PadAction>) {
-        val step = SCROLL_STEP_DP * density
+        // The step is divided by the sensitivity, so the slider that sets the pointer speed
+        // also sets the scroll speed. A zero sensitivity would divide by zero, so it is
+        // floored at a small value.
+        val step = (SCROLL_STEP_DP * density / sensitivity.coerceAtLeast(0.01f))
+            .coerceAtLeast(1f)
         val wheel = (scrollAccumY / step).toInt()
         val hPan = (scrollAccumX / step).toInt()
         if (wheel == 0 && hPan == 0) return

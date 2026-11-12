@@ -683,7 +683,7 @@ private fun SettingsPanel(
         Text("Tilt owns left-stick X when on — touch stick controls Y only", fontSize = 11.sp, color = Color(0xFF9AA1B2))
         Button(onClick = onTiltZero, modifier = Modifier.height(48.dp)) { Text("Calibrate / zero") }
         Text("Sensor: $sensorDescription", fontSize = 11.sp, color = Color(0xFF9AA1B2))
-        Text("Mouse sensitivity ×${"%.2f".format(mouseSensitivity)}", fontSize = 12.sp, color = Color(0xFFC7CDD8))
+        Text("Pointer & scroll speed ×${"%.2f".format(mouseSensitivity)}", fontSize = 12.sp, color = Color(0xFFC7CDD8))
         Slider(value = mouseSensitivity, onValueChange = onMouseSensitivity, valueRange = 0.25f..2.0f, steps = 7, modifier = Modifier.width(220.dp))
         Button(onClick = onClearInputs, modifier = Modifier.height(48.dp)) { Text("Clear all held inputs") }
         Text("Information", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE8EAF0))
@@ -698,8 +698,6 @@ private fun SettingsPanel(
     }
 }
 
-private data class KeySpec(val label: String, val usage: Int? = null, val modifier: Int = 0)
-
 @Composable
 private fun KeyboardStage(
     modifiers: Int,
@@ -709,50 +707,38 @@ private fun KeyboardStage(
     onModifier: (Int, Boolean) -> Unit,
     onKey: (Int, Boolean) -> Unit,
 ) {
-    val rows = listOf(
-        listOf(
-            KeySpec("Esc", KeyUsage.ESC), KeySpec("1", KeyUsage.NUM_1), KeySpec("2", KeyUsage.NUM_2),
-            KeySpec("3", KeyUsage.NUM_3), KeySpec("4", KeyUsage.NUM_4), KeySpec("5", KeyUsage.NUM_5),
-            KeySpec("6", KeyUsage.NUM_6), KeySpec("7", KeyUsage.NUM_7), KeySpec("8", KeyUsage.NUM_8),
-            KeySpec("9", KeyUsage.NUM_9), KeySpec("0", KeyUsage.NUM_0), KeySpec("Backspace", KeyUsage.BACKSPACE),
-        ),
-        listOf(
-            KeySpec("Tab", KeyUsage.TAB), KeySpec("Q", KeyUsage.Q), KeySpec("W", KeyUsage.W),
-            KeySpec("E", KeyUsage.E), KeySpec("R", KeyUsage.R), KeySpec("T", KeyUsage.T),
-            KeySpec("Y", KeyUsage.Y), KeySpec("U", KeyUsage.U), KeySpec("I", KeyUsage.I),
-            KeySpec("O", KeyUsage.O), KeySpec("P", KeyUsage.P), KeySpec("Enter", KeyUsage.ENTER),
-        ),
-        listOf(
-            KeySpec("Shift", modifier = MOD_LEFT_SHIFT), KeySpec("A", KeyUsage.A), KeySpec("S", KeyUsage.S),
-            KeySpec("D", KeyUsage.D), KeySpec("F", KeyUsage.F), KeySpec("G", KeyUsage.G),
-            KeySpec("H", KeyUsage.H), KeySpec("J", KeyUsage.J), KeySpec("K", KeyUsage.K),
-            KeySpec("L", KeyUsage.L), KeySpec("Shift", modifier = MOD_LEFT_SHIFT),
-        ),
-        listOf(
-            KeySpec("Ctrl", modifier = MOD_LEFT_CTRL), KeySpec("Z", KeyUsage.Z), KeySpec("X", KeyUsage.X),
-            KeySpec("C", KeyUsage.C), KeySpec("V", KeyUsage.V), KeySpec("B", KeyUsage.B),
-            KeySpec("N", KeyUsage.N), KeySpec("M", KeyUsage.M), KeySpec("Alt", modifier = MOD_LEFT_ALT),
-        ),
-        listOf(
-            KeySpec("Space", KeyUsage.SPACE), KeySpec("←", KeyUsage.LEFT), KeySpec("↑", KeyUsage.UP),
-            KeySpec("↓", KeyUsage.DOWN), KeySpec("→", KeyUsage.RIGHT),
-        ),
-    )
+    // The function row sits above the number row, so F1-F12 are always one tap away.
+    val rows = listOf(functionRow()) + keyboardRows()
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val keyboardRowHeight = ((maxHeight - 16.dp) / 5f).coerceAtLeast(48.dp)
+        val rowCount = rows.size
+        val keyboardRowHeight = ((maxHeight - 4.dp * (rowCount + 1)) / rowCount).coerceAtLeast(40.dp)
         Column(Modifier.fillMaxSize().padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             for (row in rows) {
                 Row(Modifier.fillMaxWidth().height(keyboardRowHeight), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    for (spec in row) {
-                        val active = if (spec.modifier != 0) (modifiers and spec.modifier) != 0 else spec.usage != null && spec.usage in pressedKeys
+                    for (cap in row) {
+                        val action = cap.action
+                        val active = when (action) {
+                            is KeyAction.Modifier -> (modifiers and action.bit) != 0
+                            is KeyAction.Usage -> action.usage in pressedKeys
+                        }
                         KeyboardKeyButton(
-                            label = spec.label,
+                            label = cap.label,
                             active = active,
                             hapticsEnabled = hapticsEnabled,
                             hapticsStrength = hapticsStrength,
-                            onDown = { if (spec.modifier != 0) onModifier(spec.modifier, true) else spec.usage?.let { onKey(it, true) } },
-                            onUp = { if (spec.modifier != 0) onModifier(spec.modifier, false) else spec.usage?.let { onKey(it, false) } },
-                            modifier = Modifier.weight(if (spec.label == "Space" || spec.label == "Backspace" || spec.label == "Enter") 2f else 1f).fillMaxHeight(),
+                            onDown = {
+                                when (action) {
+                                    is KeyAction.Modifier -> onModifier(action.bit, true)
+                                    is KeyAction.Usage -> onKey(action.usage, true)
+                                }
+                            },
+                            onUp = {
+                                when (action) {
+                                    is KeyAction.Modifier -> onModifier(action.bit, false)
+                                    is KeyAction.Usage -> onKey(action.usage, false)
+                                }
+                            },
+                            modifier = Modifier.weight(cap.weight).fillMaxHeight(),
                         )
                     }
                 }

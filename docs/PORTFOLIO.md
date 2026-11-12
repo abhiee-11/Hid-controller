@@ -135,9 +135,12 @@ Honesty about the edges is part of the work:
   controller needs a PC-side translator (Steam Input, ViGEm). That is a platform limit, not
   something the app can fix.
 - **The gamepad is landscape-only**, deliberately: it is a one-hand layout.
-- **The keyboard is a US layout with no second layer, and both Shift keys send the *left* Shift
-  modifier.** A symbols layer and right-hand modifiers were designed — the HID usages and
-  modifier bits are known — but have not landed. Non-US layouts are future work too.
+- **The keyboard has no punctuation or symbol keys, and no second layer.** It carries the keys
+  people type with most — letters, digits, F1–F12, modifiers, Space, arrows, Tab/Enter/Esc/
+  Backspace — and nothing else. A symbols layer was designed and built, then removed: the user
+  wanted the function row always visible and no Fn key, and accepted that `. , / - =` and the
+  nav cluster are unreachable. Both Shift keys send the *left* Shift modifier. Non-US layouts
+  are future work.
 - **The trigger reaches an Android host as an axis, never as `KEYCODE_BUTTON_R2`.** A game that
   reads the trigger strictly as a button will not see it. Fixing that means changing the
   descriptor's button bits, which changes the frozen descriptor and forces a re-pair on every
@@ -146,11 +149,9 @@ Honesty about the edges is part of the work:
 ## What I would do next
 
 1. Ship the trigger-as-button descriptor behind a profile the user opts into, and measure it.
-2. Land the keyboard's symbols layer and right-hand modifiers, then make the layout switchable
-   (US / UK / DE).
-3. Move the report feature's topic configuration into the app for a store build, and add
+2. Move the report feature's topic configuration into the app for a store build, and add
    instrumented Compose tests — the UI currently has no automated regression protection.
-4. Profile the touchpad's dot grid, which is redrawn every frame and should be cached.
+3. Profile the touchpad's dot grid, which is redrawn every frame and should be cached.
 
 ---
 
