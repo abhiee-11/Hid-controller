@@ -7,16 +7,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.offset
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,10 +41,6 @@ import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 // The palette for the on-screen controls lives in PadColors.
-
-// Keyboard keycaps: near black with a hairline near-black border, so the light can leak around.
-private val KEYCAP_COLOR = Color(0xFF14161C)
-private val KEYCAP_BORDER_COLOR = Color(0xFF04050A)
 
 // Shared drawing metrics, so the sticks, the D-pad and the shoulders stay in step.
 private val KNOB_RADIUS = 22.dp
@@ -352,7 +339,7 @@ private fun combineHats(values: Collection<Int>): Int = when {
  *
  * The phone screen cannot feel travel, so the trigger gives no half presses: a touch
  * anywhere on the strip is a full pull (1) and lifting the finger releases it (0). The
- * touch position is deliberately ignored — mapping it to a ramp put the "R2" label, which
+ * touch position is deliberately ignored â€” mapping it to a ramp put the "R2" label, which
  * is centred in the strip, at exactly half travel, and a host that thresholds the
  * trigger read that as "not pressed". The value returns to 0 on release, touch cancel, or
  * the widget leaving composition. Each pressed pointer is tracked individually (multi-touch
@@ -500,8 +487,8 @@ fun GamepadButton(
 /**
  * A rounded rectangular press-and-hold button: the shoulders and the centre pills.
  *
- * Same press/release contract as [GamepadButton] — instant press state, release on lift or
- * cancel — only the shape differs.
+ * Same press/release contract as [GamepadButton] â€” instant press state, release on lift or
+ * cancel â€” only the shape differs.
  */
 @Composable
 fun PadRectButton(
@@ -562,189 +549,3 @@ fun PadRectButton(
     }
 }
 
-/** Rectangular keyboard press target with a clear held state. */
-@Composable
-fun KeyboardKeyButton(
-    label: String,
-    active: Boolean,
-    hapticsEnabled: Boolean,
-    hapticsStrength: Float,
-    onDown: () -> Unit,
-    onUp: () -> Unit,
-    modifier: Modifier = Modifier,
-    /** Draws the caps-lock LED dot in the top-right corner. */
-    indicator: Boolean = false,
-    /** True while the host has its Caps Lock LED on. */
-    indicatorOn: Boolean = false,
-    /** The colour this key is lit with, or null when unlit. */
-    backlight: Color? = null,
-    /** The key's light intensity (0..1), used for the glow. Meaningful only with [backlight]. */
-    backlightIntensity: Float = 0f,
-) {
-    var pressed by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-    val onDownNow by rememberUpdatedState(onDown)
-    val onUpNow by rememberUpdatedState(onUp)
-    val hapticNow by rememberUpdatedState(hapticsEnabled)
-    val strengthNow by rememberUpdatedState(hapticsStrength)
-    // Pressed keys sink into the deck instead of shrinking.
-    val sink = if (pressed) 2.dp else 0.dp
-    Box(
-        modifier
-            .fillMaxHeight()
-            .drawBehind {
-                if (backlight != null && backlightIntensity > 0f) {
-                    drawKeyLeak(backlight, backlightIntensity)
-                }
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Canvas(
-            Modifier
-                .fillMaxSize()
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        var wasPressed = false
-                        try {
-                            awaitFirstDown(requireUnconsumed = false)
-                            if (!pressed) {
-                                pressed = true
-                                wasPressed = true
-                                if (hapticNow) HapticBuzz.buzz(context, strengthNow)
-                                onDownNow()
-                            }
-                            waitForUpOrCancellation()
-                        } finally {
-                            if (wasPressed || pressed) {
-                                pressed = false
-                                onUpNow()
-                            }
-                        }
-                    }
-                },
-        ) {
-            val sinkPx = sink.toPx()
-            val corner = CornerRadius(8f.dp.toPx(), 8f.dp.toPx())
-            // Keycap: always #14161C with a 1dp #04050A border. No coloured outline, ever.
-            drawRoundRect(
-                KEYCAP_COLOR,
-                topLeft = Offset(0f, sinkPx),
-                size = Size(size.width, size.height),
-                cornerRadius = corner,
-            )
-            drawRoundRect(
-                KEYCAP_BORDER_COLOR,
-                topLeft = Offset(0.5f, 0.5f + sinkPx),
-                size = Size(size.width - 1f, size.height - 1f),
-                cornerRadius = corner,
-                style = Stroke(width = 1f.dp.toPx()),
-            )
-            // Faint top highlight, white at 5% alpha along the top inside edge.
-            drawLine(
-                Color.White.copy(alpha = 0.05f),
-                start = Offset(4f, 2.5f + sinkPx),
-                end = Offset(size.width - 4f, 2.5f + sinkPx),
-                strokeWidth = 1f.dp.toPx(),
-            )
-            if (indicator) {
-                // The caps-lock LED: green with a glow when on, dim slate when off.
-                val r = 3.5f.dp.toPx()
-                val dot = Offset(size.width - r - 3f.dp.toPx(), r + 3f.dp.toPx() + sinkPx)
-                if (indicatorOn) {
-                    drawCircle(PadColors.connected.copy(alpha = 0.35f), radius = r * 2.3f, center = dot)
-                    drawCircle(PadColors.connected, radius = r, center = dot)
-                } else {
-                    drawCircle(Color(0xFF3A4156), radius = r, center = dot)
-                }
-            }
-        }
-        Text(
-            label,
-            color = if (backlight == null) Color(0xFF7A8196) else backlight,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
-            maxLines = 1,
-            style = if (backlight != null) {
-                // The legend glows in the key's colour, like the print on a backlit key.
-                TextStyle(
-                    shadow = Shadow(
-                        color = backlight.withLightness(0.65f),
-                        offset = Offset.Zero,
-                        blurRadius = with(LocalDensity.current) { 6.dp.toPx() },
-                    ),
-                )
-            } else {
-                TextStyle.Default
-            },
-            modifier = if (pressed) Modifier.offset(y = 2.dp) else Modifier,
-        )
-    }
-}
-
-/** The blurred light leak around a key: light spilling from under the keycap. */
-private fun DrawScope.drawKeyLeak(glow: Color, intensity: Float) {
-    val spread = (1f + intensity).dp.toPx()
-    val blur = (8f + 8f * intensity).dp.toPx()
-    val leak = glow.withLightness(0.55f)
-    val alpha = (intensity * 0.5f).coerceIn(0f, 1f)
-    try {
-        val paint = android.graphics.Paint().apply {
-            isAntiAlias = true
-            style = android.graphics.Paint.Style.FILL
-            color = leak.toArgb()
-            this.alpha = (alpha * 255f).toInt().coerceIn(0, 255)
-            maskFilter = android.graphics.BlurMaskFilter(blur, android.graphics.BlurMaskFilter.Blur.NORMAL)
-        }
-        drawContext.canvas.nativeCanvas.drawRoundRect(
-            -spread,
-            -spread,
-            size.width + spread,
-            size.height + spread,
-            8f.dp.toPx(),
-            8f.dp.toPx(),
-            paint,
-        )
-    } catch (_: Throwable) {
-        // Fallback: three stacked translucent rounded rects, largest outwards.
-        for (i in 3 downTo 1) {
-            val pad = spread * i
-            drawRoundRect(
-                leak.copy(alpha = (alpha * 0.33f * i).coerceIn(0f, 1f)),
-                topLeft = Offset(-pad, -pad),
-                size = Size(size.width + pad * 2f, size.height + pad * 2f),
-                cornerRadius = CornerRadius((8 + i * 5).dp.toPx()),
-            )
-        }
-    }
-}
-
-/** The key colour at a fixed lightness, keeping hue and saturation (self-contained HSL round trip). */
-private fun Color.withLightness(lightness: Float): Color {
-    val a = alpha
-    val r = red
-    val g = green
-    val b = blue
-    val cMax = maxOf(r, g, b)
-    val cMin = minOf(r, g, b)
-    val delta = cMax - cMin
-    val l = (cMax + cMin) / 2f
-    val s = if (delta == 0f) 0f else delta / (1f - kotlin.math.abs(2f * l - 1f))
-    val h = when {
-        delta == 0f -> 0f
-        cMax == r -> 60f * (((g - b) / delta) % 6f)
-        cMax == g -> 60f * (((b - r) / delta) + 2f)
-        else -> 60f * (((r - g) / delta) + 4f)
-    }
-    val c = (1f - kotlin.math.abs(2f * lightness - 1f)) * s
-    val x = c * (1f - kotlin.math.abs(((h / 60f) % 2f) - 1f))
-    val m = lightness - c / 2f
-    val (r1, g1, b1) = when {
-        h < 60f -> Triple(c, x, 0f)
-        h < 120f -> Triple(x, c, 0f)
-        h < 180f -> Triple(0f, c, x)
-        h < 240f -> Triple(0f, x, c)
-        h < 300f -> Triple(x, 0f, c)
-        else -> Triple(c, 0f, x)
-    }
-    return Color(r1 + m, g1 + m, b1 + m, a)
-}

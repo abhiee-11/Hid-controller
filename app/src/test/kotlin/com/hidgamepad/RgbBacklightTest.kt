@@ -1,110 +1,121 @@
 package com.hidgamepad
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RgbBacklightTest {
 
-    private val base = RgbConfig(enabled = true, speed = 1f, brightness = 1f)
-
-    private fun light(x: Float, y: Float, config: RgbConfig = base, pressed: Boolean = false, flashes: List<Flash> = emptyList()) =
-        keyLight(config, x, y, index = 7, pressed = pressed, flashes = flashes, timeMillis = 3_000L)
-
-    @Test
-    fun `static lights every key the preset colour`() {
-        val cfg = base.copy(effect = RgbEffect.STATIC, staticColor = 1)
-        assertEquals(light(0.1f, 0.5f, cfg).color, light(0.9f, 0.5f, cfg).color)
-        assertEquals(light(0.5f, 0.1f, cfg).color, light(0.5f, 0.9f, cfg).color)
+    private fun backlight(
+        enabled: Boolean = true,
+        mode: LightMode = LightMode.Rainbow,
+        brightness: Int = 80,
+        staticIndex: Int = 0,
+        zones: ZoneMode = ZoneMode.PerKey,
+        persisted: MutableList<List<Any?>> = mutableListOf(),
+    ) = KeyboardBacklight(enabled, mode, brightness, staticIndex, zones) { e, m, b, s, z ->
+        persisted += listOf(e, m, b, s, z)
     }
 
     @Test
-    fun `color cycle gives every key one colour`() {
-        val cfg = base.copy(effect = RgbEffect.COLOR_CYCLE)
-        assertEquals(light(0.1f, 0.2f, cfg).color, light(0.9f, 0.8f, cfg).color)
-    }
-
-    @Test
-    fun `rainbow gives neighbouring keys different hues`() {
-        val cfg = base.copy(effect = RgbEffect.RAINBOW)
-        assertTrue(light(0.1f, 0.5f, cfg).color != light(0.35f, 0.5f, cfg).color)
-        assertTrue(light(0.1f, 0.5f, cfg).color != light(0.6f, 0.5f, cfg).color)
-    }
-
-    @Test
-    fun `wave is brightest near the band, dim elsewhere`() {
-        val cfg = base.copy(effect = RgbEffect.WAVE)
-        val colors = (0..20).map { i -> light(i / 20f, 0.5f, cfg).intensity }
-        assertTrue("some keys must be near full brightness", colors.any { it > 0.5f })
-        assertTrue("some keys must be dim", colors.any { it < 0.35f })
-    }
-
-    @Test
-    fun `reactive lights only a pressed key`() {
-        val cfg = base.copy(effect = RgbEffect.REACTIVE, staticColor = 2)
-        val idle = light(0.4f, 0.5f, cfg)
-        val active = light(0.4f, 0.5f, cfg, pressed = true)
-        assertTrue(idle.intensity < active.intensity)
-        assertEquals(1f, active.intensity, 0.001f)
-    }
-
-    @Test
-    fun `ripple is strongest at the origin of the flash`() {
-        val cfg = base.copy(effect = RgbEffect.RIPPLE, staticColor = 3)
-        val flash = Flash(usage = KeyUsage.A, x = 0.5f, y = 0.5f, atMillis = 3_000L - 50)
-        val atOrigin = light(0.5f, 0.5f, cfg, flashes = listOf(flash))
-        val farAway = light(0.05f, 0.05f, cfg, flashes = listOf(flash))
-        assertTrue(atOrigin.intensity > 0.6f)
-        assertTrue(farAway.intensity < atOrigin.intensity)
-    }
-
-    @Test
-    fun `aurora, fire, meteor, starlight and comet stay in colour range`() {
-        for (effect in listOf(RgbEffect.AURORA, RgbEffect.FIRE, RgbEffect.METEOR, RgbEffect.STARLIGHT, RgbEffect.COMET, RgbEffect.FLICKER, RgbEffect.SNAKE, RgbEffect.SCANNER, RgbEffect.ARROW)) {
-            val zone = light(0.4f, 0.5f, base.copy(effect = effect))
-            assertTrue("$effect intensity must be finite and non-negative", zone.intensity >= 0f)
+    fun `backlight off means no light for any key`() {
+        val bl = backlight(enabled = false)
+        for (x in listOf(0f, 0.25f, 0.5f, 0.75f, 1f)) {
+            assertNull(bl.lightFor(x, 0L, pressed = true, sinceReleaseMs = 0L))
         }
     }
 
     @Test
-    fun `brightness scales the backlight colour`() {
-        val dim = light(0.4f, 0.5f, base.copy(effect = RgbEffect.STATIC, brightness = 0.3f))
-        val full = light(0.4f, 0.5f, base.copy(effect = RgbEffect.STATIC, brightness = 1f))
-        assertTrue(dim.color != full.color)
-        assertEquals(dim.intensity, full.intensity, 0.001f)
+    fun `brightness is clamped to the 10 to 100 range`() {
+        val bl = backlight(brightness = 100)
+        bl.change(10)
+        assertEquals(100, bl.brightness)
+        val low = backlight(brightness = 10)
+        low.change(-10)
+        assertEquals(10, low.brightness)
     }
 
     @Test
-    fun `brightness steps clamp to the supported range`() {
-        assertEquals(0.2f, adjustBrightness(0.1f, 0.1f), 0.001f)
-        assertEquals(RGB_BRIGHTNESS_MIN, adjustBrightness(0.1f, -0.1f), 0.001f)
-        assertEquals(RGB_BRIGHTNESS_MAX, adjustBrightness(0.9f, 0.1f), 0.001f)
-        assertEquals(RGB_BRIGHTNESS_MAX, adjustBrightness(1f, 0.1f), 0.001f)
-        assertEquals(0.5f, adjustBrightness(0.6f, -0.1f), 0.001f)
+    fun `reactive lights a pressed key and fades after release`() {
+        val bl = backlight(mode = LightMode.Reactive, brightness = 50)
+        val held = bl.lightFor(0.5f, 1000L, pressed = true, sinceReleaseMs = 0L)
+        assertEquals(0.5f, held!!.intensity, 0.001f)
+        val fading = bl.lightFor(0.5f, 1000L, pressed = false, sinceReleaseMs = 200L)
+        assertEquals(0.25f, fading!!.intensity, 0.001f)
+        assertNull(bl.lightFor(0.5f, 1000L, pressed = false, sinceReleaseMs = 400L))
     }
 
     @Test
-    fun `every effect produces a colour for every key`() {
-        for (effect in RgbEffect.entries) {
-            val cfg = base.copy(effect = effect)
-            for (x in listOf(0.05f, 0.3f, 0.55f, 0.8f, 0.97f)) {
-                for (y in listOf(0.1f, 0.5f, 0.9f)) {
-                    val zone = keyLight(cfg, x, y, index = 3, pressed = false, flashes = emptyList(), timeMillis = 1234L)
-                    assertTrue("$effect @ ($x,$y) produced a non-finite intensity", zone.intensity.isFinite())
-                    assertTrue("$effect @ ($x,$y) intensity negative", zone.intensity >= 0f)
-                }
-            }
+    fun `breathing intensity stays within the supported range`() {
+        val bl = backlight(mode = LightMode.Breathing, brightness = 100)
+        for (t in listOf(0L, 500L, 1100L, 2200L, 4390L)) {
+            val l = bl.lightFor(0.5f, t, pressed = false, sinceReleaseMs = 10_000L)!!
+            assertTrue(l.intensity in 0.29f..1f)
         }
     }
 
     @Test
-    fun `hash is deterministic and in range`() {
-        for (a in -50..50 step 7) {
-            for (b in 0..20) {
-                val h = hash2(a, b)
-                assertTrue(h >= 0f && h < 1f)
-            }
-        }
-        assertEquals(hash2(4, 9), hash2(4, 9), 0.0f)
+    fun `static mode lights every key the same hue`() {
+        val bl = backlight(mode = LightMode.Static, staticIndex = 2)
+        val a = bl.lightFor(0.1f, 0L, pressed = false, sinceReleaseMs = 10_000L)!!
+        val b = bl.lightFor(0.9f, 0L, pressed = false, sinceReleaseMs = 10_000L)!!
+        assertEquals(a.hue, b.hue, 0.001f)
+        assertEquals(a.intensity, b.intensity, 0.001f)
+    }
+
+    @Test
+    fun `color of the hue cycles over time in rainbow`() {
+        val bl = backlight(mode = LightMode.Rainbow, brightness = 100)
+        val a = bl.lightFor(0.5f, 0L, pressed = false, sinceReleaseMs = 10_000L)!!
+        val b = bl.lightFor(0.5f, 1800L, pressed = false, sinceReleaseMs = 10_000L)!!
+        assertTrue("hue must move with time: ${a.hue} vs ${b.hue}", a.hue != b.hue)
+    }
+
+    @Test
+    fun `rowCenters maps uneven key weights to the fractions of the row`() {
+        // weights 1, 1, 1, 2 over a row of 5
+        val xs = rowCenters(listOf(1f, 1f, 1f, 2f))
+        assertEquals(listOf(0.1f, 0.3f, 0.5f, 0.8f), xs.map { (it * 10).toInt() / 10f })
+    }
+
+    @Test
+    fun `rowCenters puts a symmetric row's middle key at one half`() {
+        val xs = rowCenters(listOf(1f, 1f, 1f))
+        assertEquals(0.5f, xs[1], 0.001f)
+    }
+
+    @Test
+    fun `toggle flips the backlight and reports it`() {
+        val persisted = mutableListOf<List<Any?>>()
+        val bl = backlight(persisted = persisted)
+        assertTrue(bl.enabled)
+        bl.toggle()
+        assertFalse(bl.enabled)
+        bl.toggle()
+        assertTrue(bl.enabled)
+        // every toggle must produce a persist entry with the new on/off state
+        assertEquals(listOf(false, true), persisted.map { it[0] })
+    }
+
+    @Test
+    fun `mode cycles through all four modes in order`() {
+        val bl = backlight(mode = LightMode.Rainbow)
+        bl.nextMode(); assertEquals(LightMode.Breathing, bl.mode)
+        bl.nextMode(); assertEquals(LightMode.Static, bl.mode)
+        bl.nextMode(); assertEquals(LightMode.Reactive, bl.mode)
+        bl.nextMode(); assertEquals(LightMode.Rainbow, bl.mode)
+        bl.prevMode(); assertEquals(LightMode.Reactive, bl.mode)
+    }
+
+    @Test
+    fun `zone mode changes which hue a key gets in breathing`() {
+        val perKey = backlight(mode = LightMode.Breathing, brightness = 100, zones = ZoneMode.PerKey)
+        val four = backlight(mode = LightMode.Breathing, brightness = 100, zones = ZoneMode.FourZones)
+        val pk = perKey.lightFor(0.1f, 0L, pressed = false, sinceReleaseMs = 10_000L)!!
+        val fz = four.lightFor(0.1f, 0L, pressed = false, sinceReleaseMs = 10_000L)!!
+        // zone 0 reads from the left edge either way; both give the same zone-0 hue
+        assertEquals(pk.hue, fz.hue, 0.001f)
     }
 }

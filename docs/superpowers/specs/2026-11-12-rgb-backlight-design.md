@@ -1,4 +1,4 @@
-# 4-zone RGB backlight on the on-screen keyboard - design
+# Per-key RGB backlight on the on-screen keyboard - design
 
 **Date:** 2026-11-12
 
@@ -26,11 +26,12 @@ major RGB control suites.
 
 ## Layout
 
-Bottom row: Fn, RGB, Caps, Win, Space, arrows. The RGB key takes width from Space.
+Bottom row: Fn, Caps, Win, Space, arrows. The keyboard carries no lighting keys.
 
-- Fn: laptop-style local layer; number row emits F1-F10 while held. Never sent on the wire.
-- RGB key: tap toggles the backlight, 500 ms hold steps to the next effect. Never sent on
-  the wire. Sends no HID usage of any kind.
+- Fn: laptop-style local layer; the number row emits F1-F10 while held. Never sent on the wire.
+- All lighting controls live in Settings, or on combos consumed like a laptop's: Fn+L toggles
+  the backlight, Fn+Up/Down steps the brightness, Fn+Left/Right steps the effect.
+  Fn+Up/Down and Fn+Left/Right are arrows when Fn is not held.
 
 ## Hard rules
 
@@ -53,5 +54,5 @@ Bottom row: Fn, RGB, Caps, Win, Space, arrows. The RGB key takes width from Spac
 
 - Effects are deterministic from (x, y, index, time); no frame-history accumulation.
 - Recomposition cost: ~12 fps while RGB is on. If the phone stutters, the clock is the knob.
-- Fn+Up/Down are arrows when Fn is not held; they are only consumed for brightness while
-  Fn is held.
+- Fn+Up/Down and Fn+Left/Right are arrows when Fn is not held; they are only consumed for
+  lighting while Fn is held.
