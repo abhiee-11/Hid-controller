@@ -1,5 +1,11 @@
 package com.hidgamepad
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.IOException
+import java.net.HttpURLConnection
+import java.net.URL
+
 /**
  * "Report a problem": publish a short message to an [ntfy](https://ntfy.sh) topic, which
  * arrives as a push notification on the maintainer's phone.
@@ -94,4 +100,67 @@ fun reportPreflightFailure(topic: String, body: String): String? = when {
     ntfyTopicUrl(topic) == null -> "The ntfy topic name is not valid."
     body.isBlank() -> "Describe the problem first."
     else -> null
+}
+
+/** The outcome of a report attempt. */
+sealed interface ReportOutcome {
+    data object Sent : ReportOutcome
+    data class Failed(val reason: String) : ReportOutcome
+}
+
+/**
+ * Publishes the report.
+ *
+ * Uses [HttpURLConnection] rather than a library: the app has no HTTP dependency, and one
+ * POST does not justify adding one. The call is made on the IO dispatcher so the UI thread is
+ * never blocked.
+ */
+object ProblemReporter {
+
+    private const val CONNECT_TIMEOUT_MS = 10_000
+    private const val READ_TIMEOUT_MS = 10_000
+
+    suspend fun send(
+        topic: String,
+        title: String,
+        body: String,
+    ): ReportOutcome = withContext(Dispatchers.IO) {
+        // Both checks happen before anything touches the network: an unvalidated topic would
+        // put an arbitrary path segment on a remote server, and an empty body would post an
+        // empty notification.
+        reportPreflightFailure(topic, body)?.let { return@withContext ReportOutcome.Failed(it) }
+
+        val url = ntfyTopicUrl(topic) ?: return@withContext ReportOutcome.Failed(
+            "The ntfy topic name is not valid."
+        )
+
+        var connection: HttpURLConnection? = null
+        try {
+            connection = (URL(url).openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                doOutput = true
+                connectTimeout = CONNECT_TIMEOUT_MS
+                readTimeout = READ_TIMEOUT_MS
+                setRequestProperty("Title", title)
+                setRequestProperty("Priority", "default")
+                setRequestProperty("Tags", "warning")
+                setRequestProperty("Content-Type", "text/plain; charset=utf-8")
+            }
+            connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            val reason = reportFailureReason(connection.responseCode)
+            if (reason == null) {
+                ReportOutcome.Sent
+            } else {
+                ReportOutcome.Failed(reason)
+            }
+        } catch (e: IOException) {
+            ReportOutcome.Failed(
+                reportFailureReason(-1) ?: "Could not reach the ntfy server."
+            )
+        } catch (e: SecurityException) {
+            ReportOutcome.Failed("The app is not allowed to use the internet.")
+        } finally {
+            connection?.disconnect()
+        }
+    }
 }

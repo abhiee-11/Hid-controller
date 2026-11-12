@@ -5,6 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import kotlinx.coroutines.runBlocking
 
 class ProblemReportTest {
 
@@ -157,5 +158,19 @@ class ProblemReportTest {
     @Test
     fun `preflight passes a valid report`() {
         assertNull(reportPreflightFailure(topic = "abc", body = "boom"))
+    }
+
+    @Test
+    fun `an invalid topic is refused without a network call`() = runBlocking {
+        val outcome = ProblemReporter.send(topic = "not a topic", title = REPORT_TITLE, body = "boom")
+        assertTrue(outcome is ReportOutcome.Failed)
+        assertEquals("The ntfy topic name is not valid.", (outcome as ReportOutcome.Failed).reason)
+    }
+
+    @Test
+    fun `a blank description is refused without a network call`() = runBlocking {
+        val outcome = ProblemReporter.send(topic = "abc", title = REPORT_TITLE, body = "   ")
+        assertTrue(outcome is ReportOutcome.Failed)
+        assertEquals("Describe the problem first.", (outcome as ReportOutcome.Failed).reason)
     }
 }
