@@ -115,9 +115,8 @@ the pair.
 
 The Settings sheet has a **Report a problem** button, directly under the HID master switch.
 
-Type what went wrong and press **Send report**. The report arrives as an ntfy push
-notification on the maintainer's phone, together with the device and screen details needed to
-diagnose it:
+Type what went wrong and press **Send report**. The report is delivered to the maintainer as
+a push notification, together with the device and screen details needed to diagnose it:
 
 ```
 Screen
@@ -147,9 +146,9 @@ Those details are attached to every report automatically and are never shown to 
 reporting — they are there so the report is actionable without anyone having to describe
 their own screen. **No Bluetooth addresses and no paired-device names are included.**
 
-The ntfy topic is the maintainer's own and is compiled into the app from
-`local.properties` (`ntfy.topic=…`), which is git-ignored: it never enters the repository.
-A build without that property asks the user for a topic instead.
+The delivery topic is the maintainer's own and is compiled into the app from a
+machine-local, git-ignored property, so it never enters the repository. A build without that
+property asks the user for a topic instead.
 
 ## Project layout
 
