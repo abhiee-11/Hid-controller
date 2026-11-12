@@ -2,12 +2,16 @@ package com.hidgamepad
 
 import android.bluetooth.BluetoothDevice
 import android.content.Context
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -18,11 +22,15 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -40,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -267,173 +276,80 @@ fun GamepadScreen(
         Modifier
             .fillMaxSize()
             .safeDrawingPadding()
-            .padding(16.dp),
+            .background(PadColors.background)
+            .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 12.dp),
     ) {
         // --- top bar: status + settings controls ---
-        Row(
-            Modifier.fillMaxWidth().height(48.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        PadTopBar(
+            statusText = statusText,
+            dotColor = when {
+                statusText.startsWith("Connected") -> PadColors.connected
+                statusText.startsWith("Connecting") -> PadColors.pending
+                else -> PadColors.secondary
+            },
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            Row(
-                Modifier.weight(1f),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_logo),
-                    contentDescription = null,
-                    // Unspecified, so the mark keeps its own colour: Icon would otherwise
-                    // tint it with the content colour, which is black on this bar.
-                    tint = Color.Unspecified,
-                    modifier = Modifier.size(26.dp),
-                )
-                Column(
-                    Modifier.weight(1f),
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Text("HID Controller", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE8EAF0))
-                    Text(
-                        (if (statusText.startsWith("Connected")) "● " else "○ ") + statusText,
-                        fontSize = 12.sp,
-                        color = when {
-                            statusText.startsWith("Connected") -> Color(0xFF9BB08D)
-                            statusText.startsWith("Connecting") -> Color(0xFFE0B75A)
-                            else -> Color(0xFF9AA1B2)
-                        },
-                    )
+            var modeMenuOpen by remember { mutableStateOf(false) }
+            Box {
+                PadPill(modeLabel(controllerMode) + " ▼", accent = true, onClick = { modeMenuOpen = !modeMenuOpen })
+                DropdownMenu(expanded = modeMenuOpen, onDismissRequest = { modeMenuOpen = false }) {
+                    for (mode in ControllerMode.entries) {
+                        DropdownMenuItem(
+                            text = { Text(modeLabel(mode)) },
+                            onClick = { modeMenuOpen = false; switchMode(mode) },
+                        )
+                    }
                 }
             }
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                var modeMenuOpen by remember { mutableStateOf(false) }
-                Box {
-                    Button(onClick = { modeMenuOpen = !modeMenuOpen }, modifier = Modifier.height(48.dp)) {
-                        Text(modeLabel(controllerMode) + " ▼", fontSize = 12.sp)
+            Box {
+                PadPill("Devices", accent = false, onClick = { devicesOpen = !devicesOpen })
+                DropdownMenu(expanded = devicesOpen, onDismissRequest = { devicesOpen = false }) {
+                    val list = deviceList
+                    if (list.isEmpty()) {
+                        DropdownMenuItem(text = { Text("No paired hosts yet") }, onClick = { devicesOpen = false })
                     }
-                    DropdownMenu(expanded = modeMenuOpen, onDismissRequest = { modeMenuOpen = false }) {
-                        for (mode in ControllerMode.entries) {
-                            DropdownMenuItem(
-                                text = { Text(modeLabel(mode)) },
-                                onClick = { modeMenuOpen = false; switchMode(mode) },
-                            )
-                        }
-                    }
-                }
-                Box {
-                    Button(onClick = { devicesOpen = !devicesOpen }, modifier = Modifier.height(48.dp)) {
-                        Text("Devices", fontSize = 12.sp)
-                    }
-                    DropdownMenu(expanded = devicesOpen, onDismissRequest = { devicesOpen = false }) {
-                        val list = deviceList
-                        if (list.isEmpty()) {
-                            DropdownMenuItem(text = { Text("No paired hosts yet") }, onClick = { devicesOpen = false })
-                        }
-                        for (d in list) {
-                            DropdownMenuItem(
-                                text = { Text(deviceLabel(d)) },
-                                onClick = {
-                                    devicesOpen = false
-                                    if (onConnect(d)) {
-                                        val label = deviceLabel(d)
-                                        prefs.edit()
-                                            .putString("last_host_address", safeDeviceAddress(d))
-                                            .putString("last_host_name", label)
-                                            .apply()
-                                        // The gesture mapping follows the host you connect to:
-                                        // a tablet must not receive Windows chords.
-                                        val detected = hostTypeForDeviceName(label, hostType)
-                                        if (detected != hostType) {
-                                            hostType = detected
-                                            prefs.edit().putString("host_type", detected.name).apply()
-                                            onProfileChanged(profileForHostType(detected))
-                                        }
+                    for (d in list) {
+                        DropdownMenuItem(
+                            text = { Text(deviceLabel(d)) },
+                            onClick = {
+                                devicesOpen = false
+                                if (onConnect(d)) {
+                                    val label = deviceLabel(d)
+                                    prefs.edit()
+                                        .putString("last_host_address", safeDeviceAddress(d))
+                                        .putString("last_host_name", label)
+                                        .apply()
+                                    // The gesture mapping follows the host you connect to:
+                                    // a tablet must not receive Windows chords.
+                                    val detected = hostTypeForDeviceName(label, hostType)
+                                    if (detected != hostType) {
+                                        hostType = detected
+                                        prefs.edit().putString("host_type", detected.name).apply()
+                                        onProfileChanged(profileForHostType(detected))
                                     }
-                                },
-                            )
-                        }
+                                }
+                            },
+                        )
                     }
                 }
-                Button(onClick = { settingsOpen = true }, modifier = Modifier.height(48.dp)) {
-                    Text("Settings", fontSize = 12.sp)
-                }
             }
+            PadPill("Settings", accent = false, onClick = { settingsOpen = true })
         }
         if (modeNotice.isNotBlank()) {
-            Text(modeNotice, fontSize = 12.sp, color = Color(0xFFE8EAF0), modifier = Modifier.padding(bottom = 4.dp))
+            Text(modeNotice, fontSize = 12.sp, color = PadColors.text, modifier = Modifier.padding(bottom = 4.dp))
         }
         when (controllerMode) {
             ControllerMode.GAMEPAD -> {
-                Text("Gamepad mode", fontSize = 12.sp, color = Color(0xFF9AA1B2))
+                Text("Gamepad mode", fontSize = 12.sp, color = PadColors.secondary)
                 if (tiltOn) {
-                    Text("Tilt controls left-stick X. Touch stick controls Y.", fontSize = 11.sp, color = Color(0xFF9AA1B2))
+                    Text("Tilt controls left-stick X. Touch stick controls Y.", fontSize = 11.sp, color = PadColors.secondary)
                 }
-                BoxWithConstraints(Modifier.fillMaxSize()) {
-            val stageW = maxWidth
-            val stageH = maxHeight
-            val pad = 8.dp
-            val abxyPad = 10.dp
-            val shoulderTop = 8.dp
-            val lowerTop = shoulderTop + 64.dp + 4.dp
-            val byWidth = (stageW - (pad * 3f + abxyPad)) / 4f
-            val byHeight = stageH - lowerTop
-            val stick = byWidth.coerceAtMost(byHeight).coerceAtMost(160.dp).coerceAtLeast(48.dp)
-            val abxy = stick + abxyPad
-            val face = (abxy / 3.15f).coerceAtLeast(48.dp)
-            val abxyTop = lowerTop - ((abxy - stick) / 2f)
-
-            DPadControl(
-                stick,
-                onHat = { model.hat = it },
-                modifier = Modifier.align(Alignment.TopStart).padding(top = lowerTop),
-            )
-            JoystickControl(
-                stick,
-                modifier = Modifier.align(Alignment.TopStart).padding(start = stick + pad, top = lowerTop),
-            ) { x, y -> model.touchLx = x; model.ly = y }
-            JoystickControl(
-                stick,
-                modifier = Modifier.align(Alignment.TopEnd).padding(end = abxy + pad, top = lowerTop),
-            ) { x, y -> model.rx = x; model.ry = y }
-            Box(
-                Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = abxyTop)
-                    .size(abxy),
-            ) {
-                val aColor = Color(0xFF5CC26A)
-                val bColor = Color(0xFFE06A5A)
-                val xColor = Color(0xFF6BA7E0)
-                val yColor = Color(0xFFE0B75A)
-                GamepadButton("Y", face, yColor, hapticsEnabled, hapticsStrength, { model.down(Btn.Y) }, { model.up(Btn.Y) }, Modifier.align(Alignment.TopCenter))
-                GamepadButton("X", face, xColor, hapticsEnabled, hapticsStrength, { model.down(Btn.X) }, { model.up(Btn.X) }, Modifier.align(Alignment.CenterStart))
-                GamepadButton("B", face, bColor, hapticsEnabled, hapticsStrength, { model.down(Btn.B) }, { model.up(Btn.B) }, Modifier.align(Alignment.CenterEnd))
-                GamepadButton("A", face, aColor, hapticsEnabled, hapticsStrength, { model.down(Btn.A) }, { model.up(Btn.A) }, Modifier.align(Alignment.BottomCenter))
-            }
-
-            Row(
-                Modifier.align(Alignment.TopStart).padding(top = shoulderTop),
-                horizontalArrangement = Arrangement.spacedBy(pad),
-            ) {
-                GamepadButton("L1", 54.dp, DpadColor, hapticsEnabled, hapticsStrength, { model.down(Btn.L1) }, { model.up(Btn.L1) })
-                PedalControl("L2", 48.dp, 64.dp, { model.lt = it })
-            }
-            Row(
-                Modifier.align(Alignment.TopCenter).padding(top = shoulderTop),
-                horizontalArrangement = Arrangement.spacedBy(pad),
-            ) {
-                GamepadButton("SEL", 48.dp, Color(0xFF4A4E5A), hapticsEnabled, hapticsStrength, { model.down(Btn.SELECT) }, { model.up(Btn.SELECT) })
-                GamepadButton("START", 48.dp, Color(0xFF4A4E5A), hapticsEnabled, hapticsStrength, { model.down(Btn.START) }, { model.up(Btn.START) })
-            }
-            Row(
-                Modifier.align(Alignment.TopEnd).padding(top = shoulderTop),
-                horizontalArrangement = Arrangement.spacedBy(pad),
-            ) {
-                PedalControl("R2", 48.dp, 64.dp, { model.rt = it })
-                GamepadButton("R1", 54.dp, DpadColor, hapticsEnabled, hapticsStrength, { model.down(Btn.R1) }, { model.up(Btn.R1) })
-            }
-                }
+                GamepadStage(
+                    model = model,
+                    hapticsEnabled = hapticsEnabled,
+                    hapticsStrength = hapticsStrength,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
             ControllerMode.MOUSE -> {
                 Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -452,7 +368,7 @@ fun GamepadScreen(
                         "Tap = click · 2-finger tap = right click · 2-finger drag = scroll · " +
                             "pinch = zoom · double-tap then drag = drag · 3-finger tap/swipe",
                         fontSize = 10.sp,
-                        color = Color(0xFF9AA1B2),
+                        color = PadColors.secondary,
                         maxLines = 2,
                     )
                 }
@@ -555,6 +471,235 @@ fun GamepadScreen(
     }
 }
 
+/**
+ * The app's title, the connection state and the row of outlined action pills.
+ *
+ * The pills are supplied by the caller so this bar stays a pure piece of chrome.
+ */
+@Composable
+private fun PadTopBar(
+    statusText: String,
+    dotColor: Color,
+    modifier: Modifier = Modifier,
+    actions: @Composable RowScope.() -> Unit,
+) {
+    Row(
+        modifier.height(48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.ic_logo),
+            contentDescription = null,
+            // Unspecified, so the mark keeps its own colour: Icon would otherwise tint it
+            // with the content colour.
+            tint = Color.Unspecified,
+            modifier = Modifier.size(26.dp),
+        )
+        Spacer(Modifier.width(10.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
+            Text("HID Controller", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = PadColors.text)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier
+                        .size(7.dp)
+                        .background(dotColor, CircleShape),
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(statusText, fontSize = 11.sp, color = PadColors.secondary, maxLines = 1)
+            }
+        }
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            content = actions,
+        )
+    }
+}
+
+/** An outlined pill button: the mode dropdown, Devices and Settings. */
+@Composable
+private fun PadPill(
+    text: String,
+    accent: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.height(34.dp),
+        shape = RoundedCornerShape(50),
+        border = BorderStroke(1.dp, if (accent) PadColors.accent else PadColors.border),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = if (accent) PadColors.accent else PadColors.text,
+        ),
+        contentPadding = PaddingValues(horizontal = 14.dp),
+    ) {
+        Text(text, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+    }
+}
+
+/**
+ * The gamepad playing field: the shoulders, the centre pills, the D-pad, both sticks and
+ * the face-button diamond.
+ *
+ * Layout only. Every control keeps the callbacks it had before, and the sizes come from the
+ * space that is actually available, so nothing overlaps on a small window.
+ */
+@Composable
+private fun GamepadStage(
+    model: ControllerModel,
+    hapticsEnabled: Boolean,
+    hapticsStrength: Float,
+    modifier: Modifier = Modifier,
+) {
+    val shoulderWidth = 100.dp
+    val triggerHeight = 40.dp
+    val bumperHeight = 30.dp
+    val shoulderGap = 6.dp
+    val shoulderBlock = triggerHeight + shoulderGap + bumperHeight
+    val faceSize = 40.dp
+    val abxy = faceSize * 3f
+    val dpadStickGap = 16.dp
+    val stickFaceGap = 20.dp
+    val centrePillWidth = 72.dp
+    val centrePillHeight = 26.dp
+    val fieldGap = 12.dp
+
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        val stageW = maxWidth
+        val stageH = maxHeight
+        // The stick size is bounded by both axes, so the field always fits.
+        val stickByWidth = (stageW - dpadStickGap - stickFaceGap - abxy) / 3f
+        val stickByHeight = stageH - shoulderBlock - fieldGap
+        val stick = minOf(stickByWidth, stickByHeight).coerceAtMost(110.dp).coerceAtLeast(56.dp)
+
+        Column(Modifier.fillMaxSize()) {
+            // Shoulders and the centre pills.
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                Column {
+                    PedalControl("L2", shoulderWidth, triggerHeight, { model.lt = it })
+                    Spacer(Modifier.height(shoulderGap))
+                    PadRectButton(
+                        label = "L1",
+                        width = shoulderWidth,
+                        height = bumperHeight,
+                        color = PadColors.secondary,
+                        hapticsEnabled = hapticsEnabled,
+                        hapticsStrength = hapticsStrength,
+                        onDown = { model.down(Btn.L1) },
+                        onUp = { model.up(Btn.L1) },
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PadRectButton(
+                        label = "SELECT",
+                        width = centrePillWidth,
+                        height = centrePillHeight,
+                        color = PadColors.secondary,
+                        hapticsEnabled = hapticsEnabled,
+                        hapticsStrength = hapticsStrength,
+                        onDown = { model.down(Btn.SELECT) },
+                        onUp = { model.up(Btn.SELECT) },
+                    )
+                    PadRectButton(
+                        label = "START",
+                        width = centrePillWidth,
+                        height = centrePillHeight,
+                        color = PadColors.secondary,
+                        hapticsEnabled = hapticsEnabled,
+                        hapticsStrength = hapticsStrength,
+                        onDown = { model.down(Btn.START) },
+                        onUp = { model.up(Btn.START) },
+                    )
+                }
+                Spacer(Modifier.weight(1f))
+                Column {
+                    PedalControl("R2", shoulderWidth, triggerHeight, { model.rt = it })
+                    Spacer(Modifier.height(shoulderGap))
+                    PadRectButton(
+                        label = "R1",
+                        width = shoulderWidth,
+                        height = bumperHeight,
+                        color = PadColors.secondary,
+                        hapticsEnabled = hapticsEnabled,
+                        hapticsStrength = hapticsStrength,
+                        onDown = { model.down(Btn.R1) },
+                        onUp = { model.up(Btn.R1) },
+                    )
+                }
+            }
+            Spacer(Modifier.height(fieldGap))
+            // The playing field.
+            Row(
+                Modifier.fillMaxWidth().weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                DPadControl(stick, onHat = { model.hat = it })
+                Spacer(Modifier.width(dpadStickGap))
+                JoystickControl(stick) { x, y -> model.touchLx = x; model.ly = y }
+                Spacer(Modifier.weight(1f))
+                JoystickControl(stick) { x, y -> model.rx = x; model.ry = y }
+                Spacer(Modifier.width(stickFaceGap))
+                Box(Modifier.size(abxy)) {
+                    GamepadButton("Y", faceSize, PadColors.faceY, hapticsEnabled, hapticsStrength, { model.down(Btn.Y) }, { model.up(Btn.Y) }, Modifier.align(Alignment.TopCenter))
+                    GamepadButton("X", faceSize, PadColors.faceX, hapticsEnabled, hapticsStrength, { model.down(Btn.X) }, { model.up(Btn.X) }, Modifier.align(Alignment.CenterStart))
+                    GamepadButton("B", faceSize, PadColors.faceB, hapticsEnabled, hapticsStrength, { model.down(Btn.B) }, { model.up(Btn.B) }, Modifier.align(Alignment.CenterEnd))
+                    GamepadButton("A", faceSize, PadColors.faceA, hapticsEnabled, hapticsStrength, { model.down(Btn.A) }, { model.up(Btn.A) }, Modifier.align(Alignment.BottomCenter))
+                }
+            }
+        }
+    }
+}
+
+@Preview(name = "Gamepad screen", widthDp = 857, heightDp = 384, showBackground = true, backgroundColor = 0xFF0F1115)
+@Composable
+private fun GamepadScreenPreview() {
+    val model = remember { ControllerModel() }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(PadColors.background)
+            .padding(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 12.dp),
+    ) {
+        PadTopBar(
+            statusText = "Connected: Windows PC",
+            dotColor = PadColors.connected,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            PadPill("Gamepad ▼", accent = true, onClick = {})
+            PadPill("Devices", accent = false, onClick = {})
+            PadPill("Settings", accent = false, onClick = {})
+        }
+        Spacer(Modifier.height(8.dp))
+        GamepadStage(
+            model = model,
+            hapticsEnabled = true,
+            hapticsStrength = 1f,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
+@Preview(name = "Gamepad field", widthDp = 640, heightDp = 300, showBackground = true, backgroundColor = 0xFF0F1115)
+@Composable
+private fun GamepadStagePreview() {
+    val model = remember { ControllerModel() }
+    Column(
+        Modifier
+            .fillMaxSize()
+            .background(PadColors.background)
+            .padding(16.dp),
+    ) {
+        GamepadStage(
+            model = model,
+            hapticsEnabled = true,
+            hapticsStrength = 1f,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
 
 @Composable
 private fun SettingsPanel(
@@ -590,7 +735,7 @@ private fun SettingsPanel(
     onClearInputs: () -> Unit,
 ) {
     val profile = profileForHostType(hostType)
-    Box(Modifier.fillMaxSize().background(Color(0xFF1A1B21)).safeDrawingPadding()) {
+    Box(Modifier.fillMaxSize().background(PadColors.background).safeDrawingPadding()) {
     Column(
         // Capped and centred on a wide screen so the settings do not stretch across a
         // tablet; a compact screen gets the whole width.
@@ -603,7 +748,7 @@ private fun SettingsPanel(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE8EAF0), modifier = Modifier.weight(1f))
+            Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = PadColors.text, modifier = Modifier.weight(1f))
             Button(onClick = onClose, modifier = Modifier.height(48.dp)) { Text("Close") }
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -611,7 +756,7 @@ private fun SettingsPanel(
                 "HID controller: ${if (hidEnabled) "ON" else "OFF"}",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFFE8EAF0),
+                color = PadColors.text,
                 modifier = Modifier.weight(1f),
             )
             Switch(checked = hidEnabled, onCheckedChange = onHidEnabledChange)
@@ -627,36 +772,36 @@ private fun SettingsPanel(
             "Off releases every input, unregisters the HID device and removes the notification. " +
                 "Phone Bluetooth and other Bluetooth connections are unaffected.",
             fontSize = 11.sp,
-            color = Color(0xFF9AA1B2),
+            color = PadColors.secondary,
         )
-        Text("Connection", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE8EAF0))
-        Text("Connected host: $statusText", fontSize = 12.sp, color = Color(0xFFC7CDD8))
+        Text("Connection", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PadColors.text)
+        Text("Connected host: $statusText", fontSize = 12.sp, color = PadColors.secondary)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Button(onClick = onReconnect, modifier = Modifier.height(48.dp)) { Text("Reconnect") }
             Button(onClick = onChangeDevice, modifier = Modifier.height(48.dp)) { Text("Change device") }
             Button(onClick = onDiscoverable, modifier = Modifier.height(48.dp)) { Text("Make discoverable") }
         }
         Button(onClick = onRunSetup, modifier = Modifier.height(48.dp)) { Text("Getting started") }
-        Text("Controls", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE8EAF0))
-        Text("Mode: ${modeLabel(controllerMode)}", fontSize = 12.sp, color = Color(0xFFC7CDD8))
+        Text("Controls", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PadColors.text)
+        Text("Mode: ${modeLabel(controllerMode)}", fontSize = 12.sp, color = PadColors.secondary)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (mode in ControllerMode.entries) {
                 Button(onClick = { onMode(mode) }, modifier = Modifier.height(48.dp)) { Text(modeLabel(mode)) }
             }
         }
-        Text("Host type: ${hostTitle(hostType)}", fontSize = 12.sp, color = Color(0xFFC7CDD8))
+        Text("Host type: ${hostTitle(hostType)}", fontSize = 12.sp, color = PadColors.secondary)
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (type in HostType.entries) {
                 Button(onClick = { onHostType(type) }, modifier = Modifier.height(48.dp)) { Text(hostTitle(type)) }
             }
         }
-        Text("Decides what three-finger swipes send. Change it if the swipes do nothing.", fontSize = 11.sp, color = Color(0xFF9AA1B2))
+        Text("Decides what three-finger swipes send. Change it if the swipes do nothing.", fontSize = 11.sp, color = PadColors.secondary)
         Text(
             "It also picks the HID descriptor the host needs: Android gets ${profileLabel(HidProfile.COMPOSITE)}, " +
                 "Windows gets ${profileLabel(HidProfile.GAMEPAD_ONLY)}. Changing it needs a re-pair, because " +
                 "the host caches the descriptor at pairing time.",
             fontSize = 11.sp,
-            color = Color(0xFFE0B75A),
+            color = PadColors.pending,
         )
         if (profileNeedsRepair(current = profile, registered = registeredProfile)) {
             Text(
@@ -664,7 +809,7 @@ private fun SettingsPanel(
                     "descriptor. Remove the phone on the host, tap Make discoverable here, " +
                     "then add the phone on the host again.",
                 fontSize = 11.sp,
-                color = Color(0xFFE06A5A),
+                color = PadColors.faceB,
             )
             Button(onClick = onConfirmRepair, modifier = Modifier.height(48.dp)) {
                 Text("I've re-paired the host")
@@ -673,27 +818,27 @@ private fun SettingsPanel(
         Button(onClick = { onHaptics(!hapticsEnabled) }, modifier = Modifier.height(48.dp)) {
             Text(if (hapticsEnabled) "Haptics ON" else "Haptics OFF")
         }
-        Text("Haptics strength · ${"%.2f".format(hapticsStrength)}", fontSize = 12.sp, color = Color(0xFFC7CDD8))
+        Text("Haptics strength · ${"%.2f".format(hapticsStrength)}", fontSize = 12.sp, color = PadColors.secondary)
         Slider(value = hapticsStrength, onValueChange = onHapticsStrength, valueRange = 0.25f..1.5f, steps = 4, modifier = Modifier.width(220.dp))
         Button(onClick = { onTilt(!tiltOn) }, modifier = Modifier.height(48.dp)) { Text(if (tiltOn) "Tilt ON" else "Tilt OFF") }
-        Text("Tilt sensitivity ×${"%.1f".format(tiltSensitivity)}", fontSize = 12.sp, color = Color(0xFFC7CDD8))
+        Text("Tilt sensitivity Ã—${"%.1f".format(tiltSensitivity)}", fontSize = 12.sp, color = PadColors.secondary)
         Slider(value = tiltSensitivity, onValueChange = onTiltSensitivity, valueRange = 0.5f..2.0f, steps = 9, modifier = Modifier.width(220.dp))
-        Text("Tilt deadzone ${"%.2f".format(tiltDeadzone)}", fontSize = 12.sp, color = Color(0xFFC7CDD8))
+        Text("Tilt deadzone ${"%.2f".format(tiltDeadzone)}", fontSize = 12.sp, color = PadColors.secondary)
         Slider(value = tiltDeadzone, onValueChange = onTiltDeadzone, valueRange = 0f..0.3f, steps = 15, modifier = Modifier.width(220.dp))
-        Text("Tilt owns left-stick X when on — touch stick controls Y only", fontSize = 11.sp, color = Color(0xFF9AA1B2))
+        Text("Tilt owns left-stick X when on — touch stick controls Y only", fontSize = 11.sp, color = PadColors.secondary)
         Button(onClick = onTiltZero, modifier = Modifier.height(48.dp)) { Text("Calibrate / zero") }
-        Text("Sensor: $sensorDescription", fontSize = 11.sp, color = Color(0xFF9AA1B2))
-        Text("Pointer & scroll speed ×${"%.2f".format(mouseSensitivity)}", fontSize = 12.sp, color = Color(0xFFC7CDD8))
+        Text("Sensor: $sensorDescription", fontSize = 11.sp, color = PadColors.secondary)
+        Text("Pointer & scroll speed Ã—${"%.2f".format(mouseSensitivity)}", fontSize = 12.sp, color = PadColors.secondary)
         Slider(value = mouseSensitivity, onValueChange = onMouseSensitivity, valueRange = 0.25f..2.0f, steps = 7, modifier = Modifier.width(220.dp))
         Button(onClick = onClearInputs, modifier = Modifier.height(48.dp)) { Text("Clear all held inputs") }
-        Text("Information", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE8EAF0))
-        Text("HID status: $statusText", fontSize = 12.sp, color = Color(0xFFC7CDD8))
-        Text("Help / pairing instructions", fontSize = 12.sp, color = Color(0xFFC7CDD8))
-        Text(pairInstructions(hostType), fontSize = 12.sp, color = Color(0xFF9AA1B2))
+        Text("Information", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PadColors.text)
+        Text("HID status: $statusText", fontSize = 12.sp, color = PadColors.secondary)
+        Text("Help / pairing instructions", fontSize = 12.sp, color = PadColors.secondary)
+        Text(pairInstructions(hostType), fontSize = 12.sp, color = PadColors.secondary)
         if (hostType == HostType.ANDROID) {
-            Text("Android compatibility note: some Android phones do not support Bluetooth HID hosts.", fontSize = 12.sp, color = Color(0xFF9AA1B2))
+            Text("Android compatibility note: some Android phones do not support Bluetooth HID hosts.", fontSize = 12.sp, color = PadColors.secondary)
         }
-        Text("Phone haptics are phone-local press feedback, not host-controlled game rumble.", fontSize = 12.sp, color = Color(0xFF9AA1B2))
+        Text("Phone haptics are phone-local press feedback, not host-controlled game rumble.", fontSize = 12.sp, color = PadColors.secondary)
     }
     }
 }

@@ -3,5 +3,5 @@
     <!-- The launcher icon's background layer: the app's deep charcoal. -->
     <color name="ic_launcher_background">#141519</color>
     <!-- The window background behind the first frame, so launching does not flash white. -->
-    <color name="splash_background">#141519</color>
+    <color name="splash_background">#0F1115</color>
 </resources>

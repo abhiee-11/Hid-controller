@@ -179,7 +179,7 @@ class MainActivity : ComponentActivity() {
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Color(0xFF141519)),
+                    .background(PadColors.background),
             ) {
                 if (permissionsGranted) {
                     val status by manager.status.collectAsState()
