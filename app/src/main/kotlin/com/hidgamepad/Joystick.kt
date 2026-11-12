@@ -7,7 +7,16 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,6 +50,10 @@ import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 // The palette for the on-screen controls lives in PadColors.
+
+// Keyboard keycaps: near black with a hairline near-black border, so the light can leak around.
+private val KEYCAP_COLOR = Color(0xFF14161C)
+private val KEYCAP_BORDER_COLOR = Color(0xFF04050A)
 
 // Shared drawing metrics, so the sticks, the D-pad and the shoulders stay in step.
 private val KNOB_RADIUS = 22.dp
@@ -549,3 +562,149 @@ fun PadRectButton(
     }
 }
 
+/** Rectangular keyboard press target with a clear held state. */
+@Composable
+fun KeyboardKeyButton(
+    label: String,
+    active: Boolean,
+    hapticsEnabled: Boolean,
+    hapticsStrength: Float,
+    onDown: () -> Unit,
+    onUp: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** Draws the caps-lock LED dot in the top-right corner. */
+    indicator: Boolean = false,
+    /** True while the host has its Caps Lock LED on. */
+    indicatorOn: Boolean = false,
+    /** The colour this key is lit with, or null when unlit. */
+    backlight: Color? = null,
+) {
+    var pressed by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val onDownNow by rememberUpdatedState(onDown)
+    val onUpNow by rememberUpdatedState(onUp)
+    val hapticNow by rememberUpdatedState(hapticsEnabled)
+    val strengthNow by rememberUpdatedState(hapticsStrength)
+    // Pressed keys sink into the deck instead of shrinking.
+    val sink = if (pressed) 2.dp else 0.dp
+    Box(
+        modifier.fillMaxHeight(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(
+            Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        var wasPressed = false
+                        try {
+                            awaitFirstDown(requireUnconsumed = false)
+                            if (!pressed) {
+                                pressed = true
+                                wasPressed = true
+                                if (hapticNow) HapticBuzz.buzz(context, strengthNow)
+                                onDownNow()
+                            }
+                            waitForUpOrCancellation()
+                        } finally {
+                            if (wasPressed || pressed) {
+                                pressed = false
+                                onUpNow()
+                            }
+                        }
+                    }
+                },
+        ) {
+            val sinkPx = sink.toPx()
+            val corner = CornerRadius(8f.dp.toPx(), 8f.dp.toPx())
+            // Keycap: always #14161C with a 1dp #04050A border. No coloured outline, ever.
+            drawRoundRect(
+                KEYCAP_COLOR,
+                topLeft = Offset(0f, sinkPx),
+                size = Size(size.width, size.height),
+                cornerRadius = corner,
+            )
+            drawRoundRect(
+                KEYCAP_BORDER_COLOR,
+                topLeft = Offset(0.5f, 0.5f + sinkPx),
+                size = Size(size.width - 1f, size.height - 1f),
+                cornerRadius = corner,
+                style = Stroke(width = 1f.dp.toPx()),
+            )
+            // Faint top highlight, white at 5% alpha along the top inside edge.
+            drawLine(
+                Color.White.copy(alpha = 0.05f),
+                start = Offset(4f, 2.5f + sinkPx),
+                end = Offset(size.width - 4f, 2.5f + sinkPx),
+                strokeWidth = 1f.dp.toPx(),
+            )
+            if (indicator) {
+                // The caps-lock LED: green with a glow when on, dim slate when off.
+                val r = 3.5f.dp.toPx()
+                val dot = Offset(size.width - r - 3f.dp.toPx(), r + 3f.dp.toPx() + sinkPx)
+                if (indicatorOn) {
+                    drawCircle(PadColors.connected.copy(alpha = 0.35f), radius = r * 2.3f, center = dot)
+                    drawCircle(PadColors.connected, radius = r, center = dot)
+                } else {
+                    drawCircle(Color(0xFF3A4156), radius = r, center = dot)
+                }
+            }
+        }
+        Text(
+            label,
+            // A dim key's legend falls back to muted slate; only a genuinely lit key glows.
+            color = if (backlight == null || backlight.luminance() < 0.28f) Color(0xFF7A8196) else backlight,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            style = if (backlight != null) {
+                // The legend is the only light on the key: a bright core and a thick halo that
+                // spills past the keycap edge into the deck.
+                TextStyle(
+                    shadow = Shadow(
+                        color = backlight.withLightness(0.55f).copy(alpha = 0.85f),
+                        offset = Offset.Zero,
+                        blurRadius = with(LocalDensity.current) { 10.dp.toPx() },
+                    ),
+                )
+            } else {
+                TextStyle.Default
+            },
+            modifier = if (pressed) Modifier.offset(y = 2.dp) else Modifier,
+        )
+    }
+}
+
+
+private fun Color.luminance(): Float = red * 0.2126f + green * 0.7152f + blue * 0.0722f
+
+/** The key colour at a fixed lightness, keeping hue and saturation (self-contained HSL round trip). */
+private fun Color.withLightness(lightness: Float): Color {
+    val a = alpha
+    val r = red
+    val g = green
+    val b = blue
+    val cMax = maxOf(r, g, b)
+    val cMin = minOf(r, g, b)
+    val delta = cMax - cMin
+    val l = (cMax + cMin) / 2f
+    val s = if (delta == 0f) 0f else delta / (1f - kotlin.math.abs(2f * l - 1f))
+    val h = when {
+        delta == 0f -> 0f
+        cMax == r -> 60f * (((g - b) / delta) % 6f)
+        cMax == g -> 60f * (((b - r) / delta) + 2f)
+        else -> 60f * (((r - g) / delta) + 4f)
+    }
+    val c = (1f - kotlin.math.abs(2f * lightness - 1f)) * s
+    val x = c * (1f - kotlin.math.abs(((h / 60f) % 2f) - 1f))
+    val m = lightness - c / 2f
+    val (r1, g1, b1) = when {
+        h < 60f -> Triple(c, x, 0f)
+        h < 120f -> Triple(x, c, 0f)
+        h < 180f -> Triple(0f, c, x)
+        h < 240f -> Triple(0f, x, c)
+        h < 300f -> Triple(x, 0f, c)
+        else -> Triple(c, 0f, x)
+    }
+    return Color(r1 + m, g1 + m, b1 + m, a)
+}
