@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,6 +44,9 @@ import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 // The palette for the on-screen controls lives in PadColors.
+
+// The backlit keyboard's keycap body: near black, so the glow can spill around it.
+private val RGB_KEYCAP_COLOR = Color(0xFF0A0B10)
 
 // Shared drawing metrics, so the sticks, the D-pad and the shoulders stay in step.
 private val KNOB_RADIUS = 22.dp
@@ -563,6 +567,8 @@ fun KeyboardKeyButton(
     modifier: Modifier = Modifier,
     /** Draws a glowing dot in the top-right corner while the key is active (CapsLock). */
     indicator: Boolean = false,
+    /** The zone colour this key is lit with, or null when the RGB backlight is off. */
+    backlight: Color? = null,
 ) {
     var pressed by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -596,20 +602,44 @@ fun KeyboardKeyButton(
                 },
         ) {
             val keyCorner = CornerRadius(8f.dp.toPx(), 8f.dp.toPx())
-            drawRoundRect(
-                if (active || pressed) PadColors.accent.copy(alpha = 0.45f) else PadColors.surface,
-                cornerRadius = keyCorner,
-            )
-            drawRoundRect(
-                PadColors.border,
-                cornerRadius = keyCorner,
-                style = Stroke(width = HAIRLINE.toPx()),
-            )
+            val sink = if (pressed) 2f.dp.toPx() else 0f
+            if (backlight == null) {
+                drawRoundRect(
+                    if (active || pressed) PadColors.accent.copy(alpha = 0.45f) else PadColors.surface,
+                    cornerRadius = keyCorner,
+                )
+                drawRoundRect(
+                    PadColors.border,
+                    cornerRadius = keyCorner,
+                    style = Stroke(width = HAIRLINE.toPx()),
+                )
+            } else {
+                // Backlit look: a near-black keycap with the light leaking out from under it
+                // into the gaps around it. Two glow layers build the leak, the black cap sits on top.
+                drawRoundRect(
+                    backlight.copy(alpha = 0.30f),
+                    topLeft = Offset(0f, sink),
+                    size = Size(size.width, size.height),
+                    cornerRadius = keyCorner,
+                )
+                drawRoundRect(
+                    backlight.copy(alpha = 0.45f),
+                    topLeft = Offset(2f, 2f + sink),
+                    size = Size(size.width - 4f, size.height - 4f),
+                    cornerRadius = CornerRadius(6f.dp.toPx(), 6f.dp.toPx()),
+                )
+                drawRoundRect(
+                    RGB_KEYCAP_COLOR,
+                    topLeft = Offset(4.5f, 4.5f + sink),
+                    size = Size(size.width - 9f, size.height - 9f),
+                    cornerRadius = CornerRadius(4f.dp.toPx(), 4f.dp.toPx()),
+                )
+            }
             if (indicator) {
                 // A soft halo plus a solid core, in the corner the label leaves free.
                 val r = 2.5f.dp.toPx()
                 val inset = r + 3f.dp.toPx()
-                val dot = Offset(size.width - inset, inset)
+                val dot = Offset(size.width - inset, inset + sink)
                 drawCircle(Color.White.copy(alpha = 0.22f), radius = r * 2.6f, center = dot)
                 drawCircle(Color.White.copy(alpha = 0.45f), radius = r * 1.7f, center = dot)
                 drawCircle(Color.White, radius = r, center = dot)
@@ -617,10 +647,11 @@ fun KeyboardKeyButton(
         }
         Text(
             label,
-            color = PadColors.text,
+            color = if (backlight == null) PadColors.text else backlight,
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
+            modifier = if (pressed) Modifier.offset(y = 2.dp) else Modifier,
         )
     }
 }

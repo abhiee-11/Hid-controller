@@ -4,6 +4,10 @@ import android.bluetooth.BluetoothDevice
 import android.content.Context
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -38,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,6 +52,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.produceState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -55,6 +61,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import kotlinx.coroutines.delay
 
 /** Mutable controller model; every field is a Compose state so changes retrigger report pushes. */
 private class ControllerModel {
@@ -76,6 +83,8 @@ private class ControllerModel {
         buttons = buttons and (1 shl bit).inv()
     }
 }
+
+private val RGB_DECK_COLOR = Color(0xFF050608)
 
 /** One-line text for the top bar given the manager status. */
 fun statusLabel(status: HidGamepadManager.Status): String = when (status) {
@@ -107,6 +116,30 @@ fun modeLabel(mode: ControllerMode): String = when (mode) {
     ControllerMode.GAMEPAD -> "Gamepad"
     ControllerMode.MOUSE -> "Mouse"
     ControllerMode.KEYBOARD -> "Keyboard"
+}
+
+private fun rgbEffectLabel(effect: RgbEffect): String = when (effect) {
+    RgbEffect.STATIC -> "Static"
+    RgbEffect.BREATHING -> "Breathing"
+    RgbEffect.COLOR_CYCLE -> "Color cycle"
+    RgbEffect.RAINBOW -> "Rainbow"
+    RgbEffect.WAVE -> "Wave"
+    RgbEffect.REACTIVE -> "Reactive"
+    RgbEffect.RIPPLE -> "Ripple"
+    RgbEffect.AURORA -> "Aurora"
+    RgbEffect.FLICKER -> "Flicker"
+    RgbEffect.STARLIGHT -> "Starlight"
+    RgbEffect.COMET -> "Comet"
+    RgbEffect.FIRE -> "Fire"
+    RgbEffect.METEOR -> "Meteor"
+    RgbEffect.SNAKE -> "Snake"
+    RgbEffect.SCANNER -> "Scanner"
+    RgbEffect.ARROW -> "Arrows"
+}
+
+private fun rgbFlowLabel(flow: RgbFlow): String = when (flow) {
+    RgbFlow.LEFT_TO_RIGHT -> "Left to right"
+    RgbFlow.RIGHT_TO_LEFT -> "Right to left"
 }
 
 fun hostTitle(hostType: HostType): String = when (hostType) {
@@ -245,6 +278,35 @@ fun GamepadScreen(
     val reportedKeys = keyboardKeys.map { if (it in fnConsumed) fnUsageFor(it) ?: it else it }.toSet()
     val keyboardState = KeyboardState(keyboardModifiers, reportedKeys)
     LaunchedEffect(keyboardState) { onKeyboardState(keyboardState) }
+
+    // The RGB backlight: a phone-only visual effect for the on-screen keyboard. fn+L toggles
+    // it, fn+Up/Down adjusts the brightness, and the Settings panel has the full controls.
+    var rgbConfig by remember {
+        mutableStateOf(
+            RgbConfig(
+                enabled = prefs.getBoolean("rgb_on", false),
+                effect = runCatching { RgbEffect.valueOf(prefs.getString("rgb_effect", "RAINBOW") ?: "RAINBOW") }
+                    .getOrDefault(RgbEffect.RAINBOW),
+                flow = runCatching { RgbFlow.valueOf(prefs.getString("rgb_flow", "LEFT_TO_RIGHT") ?: "LEFT_TO_RIGHT") }
+                    .getOrDefault(RgbFlow.LEFT_TO_RIGHT),
+                speed = prefs.getFloat("rgb_speed", 1f),
+                staticColor = prefs.getInt("rgb_color", 0),
+                brightness = prefs.getFloat("rgb_brightness", 1f),
+            ),
+        )
+    }
+
+    fun saveRgbConfig(newConfig: RgbConfig) {
+        rgbConfig = newConfig
+        prefs.edit()
+            .putBoolean("rgb_on", newConfig.enabled)
+            .putString("rgb_effect", newConfig.effect.name)
+            .putString("rgb_flow", newConfig.flow.name)
+            .putFloat("rgb_speed", newConfig.speed)
+            .putInt("rgb_color", newConfig.staticColor)
+            .putFloat("rgb_brightness", newConfig.brightness)
+            .apply()
+    }
 
     fun resetLocalInputs() {
         model.touchLx = 0f
@@ -390,17 +452,30 @@ fun GamepadScreen(
                     pressedKeys = keyboardKeys,
                     capsLockLed = capsLockLed,
                     fnHeld = fnHeld,
+                    rgb = rgbConfig,
                     hapticsEnabled = hapticsEnabled,
                     hapticsStrength = hapticsStrength,
                     onModifier = { bit, down ->
                         keyboardModifiers = if (down) keyboardModifiers or bit else keyboardModifiers and bit.inv()
                     },
                     onKey = { usage, down ->
-                        keyboardKeys = if (down) keyboardKeys + usage else keyboardKeys - usage
-                        if (down) {
-                            if (fnHeld && fnUsageFor(usage) != null) fnConsumed += usage
-                        } else {
-                            fnConsumed -= usage
+                        // Fn+L toggles the RGB backlight; Fn+Up/Down steps the brightness.
+                        // Like a laptop, these are consumed and never reach the host.
+                        when {
+                            fnHeld && down && usage == KeyUsage.L ->
+                                saveRgbConfig(rgbConfig.copy(enabled = !rgbConfig.enabled))
+                            fnHeld && down && (usage == KeyUsage.UP || usage == KeyUsage.DOWN) -> {
+                                val delta = if (usage == KeyUsage.UP) 0.1f else -0.1f
+                                saveRgbConfig(rgbConfig.copy(brightness = adjustBrightness(rgbConfig.brightness, delta)))
+                            }
+                            else -> {
+                                keyboardKeys = if (down) keyboardKeys + usage else keyboardKeys - usage
+                                if (down) {
+                                    if (fnHeld && fnUsageFor(usage) != null) fnConsumed += usage
+                                } else {
+                                    fnConsumed -= usage
+                                }
+                            }
                         }
                     },
                     onFn = { fnHeld = it },
@@ -466,6 +541,8 @@ fun GamepadScreen(
                     prefs.edit().putFloat("mouse_sensitivity", it).apply()
                 },
                 onClearInputs = { resetLocalInputs(); onReleaseAllInputs() },
+                rgbConfig = rgbConfig,
+                onRgb = { saveRgbConfig(it) },
             )
         }
     }
@@ -765,6 +842,8 @@ private fun SettingsPanel(
     onTiltZero: () -> Unit,
     onMouseSensitivity: (Float) -> Unit,
     onClearInputs: () -> Unit,
+    rgbConfig: RgbConfig,
+    onRgb: (RgbConfig) -> Unit,
 ) {
     val profile = profileForHostType(hostType)
     Box(Modifier.fillMaxSize().background(PadColors.background).safeDrawingPadding()) {
@@ -871,6 +950,62 @@ private fun SettingsPanel(
             Text("Android compatibility note: some Android phones do not support Bluetooth HID hosts.", fontSize = 12.sp, color = PadColors.secondary)
         }
         Text("Phone haptics are phone-local press feedback, not host-controlled game rumble.", fontSize = 12.sp, color = PadColors.secondary)
+        // --- RGB backlight: a phone-only, purely visual effect ---
+        Text("RGB backlight", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PadColors.text)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Backlight: ${if (rgbConfig.enabled) "ON" else "OFF"}",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = PadColors.text,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(
+                checked = rgbConfig.enabled,
+                onCheckedChange = { enabled -> onRgb(rgbConfig.copy(enabled = enabled)) },
+            )
+        }
+        Text("Four zones, phone-local. Fn+L toggles; Fn+Up and Fn+Down set the brightness.", fontSize = 11.sp, color = PadColors.secondary)
+        Text("Effect: ${rgbEffectLabel(rgbConfig.effect)}", fontSize = 12.sp, color = PadColors.secondary)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (effect in RgbEffect.entries) {
+                PadPill(
+                    rgbEffectLabel(effect),
+                    accent = rgbConfig.effect == effect,
+                    onClick = { onRgb(rgbConfig.copy(effect = effect)) },
+                    modifier = Modifier.height(34.dp),
+                )
+            }
+        }
+        Text("Flow: ${rgbFlowLabel(rgbConfig.flow)}", fontSize = 12.sp, color = PadColors.secondary)
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (flow in RgbFlow.entries) {
+                Button(onClick = { onRgb(rgbConfig.copy(flow = flow)) }, modifier = Modifier.height(48.dp)) {
+                    Text(rgbFlowLabel(flow))
+                }
+            }
+        }
+        Text("Speed x${"%.2f".format(rgbConfig.speed)}", fontSize = 12.sp, color = PadColors.secondary)
+        Slider(value = rgbConfig.speed, onValueChange = { onRgb(rgbConfig.copy(speed = it)) }, valueRange = 0.25f..2f, steps = 6, modifier = Modifier.width(220.dp))
+        Text("Brightness ${"%.0f".format(rgbConfig.brightness * 100)}%", fontSize = 12.sp, color = PadColors.secondary)
+        Slider(value = rgbConfig.brightness, onValueChange = { onRgb(rgbConfig.copy(brightness = it)) }, valueRange = 0.1f..1f, steps = 8, modifier = Modifier.width(220.dp))
+        Text("Colour", fontSize = 12.sp, color = PadColors.secondary)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for ((index, preset) in RGB_PRESETS.withIndex()) {
+                Box(
+                    Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(Color.hsv(preset.hue, preset.sat, preset.value))
+                        .border(
+                            1.dp,
+                            if (rgbConfig.staticColor == index) PadColors.accent else PadColors.border,
+                            CircleShape,
+                        )
+                        .clickable(onClick = { onRgb(rgbConfig.copy(staticColor = index)) }),
+                )
+            }
+        }
     }
     }
 }
@@ -881,6 +1016,7 @@ private fun KeyboardStage(
     pressedKeys: Set<Int>,
     capsLockLed: Boolean,
     fnHeld: Boolean,
+    rgb: RgbConfig,
     hapticsEnabled: Boolean,
     hapticsStrength: Float,
     onModifier: (Int, Boolean) -> Unit,
@@ -889,28 +1025,70 @@ private fun KeyboardStage(
 ) {
     // The function row sits above the number row, so F1-F12 are always one tap away.
     val rows = listOf(functionRow()) + keyboardRows()
+    // The backlight's clock and its press flashes share one time base.
+    val rgbStart = remember { System.currentTimeMillis() }
+    // The backlight's clock: a slow tick drives the glow. It only runs while the RGB
+    // backlight is on, and stays at 0 otherwise so nothing animates.
+    val rgbClock by produceState(initialValue = 0L, key1 = rgb.enabled) {
+        if (!rgb.enabled) {
+            value = 0L
+            return@produceState
+        }
+        while (true) {
+            value = System.currentTimeMillis() - rgbStart
+            delay(80)
+        }
+    }
+    // Recent key presses, for the ripple and reactive effects. Capped and pruned on append.
+    val flashes = remember { mutableStateListOf<Flash>() }
+    // A darker deck so the glow stands out when the backlight is on.
+    val keyGap = if (rgb.enabled) 7.dp else 4.dp
+    Box(Modifier.fillMaxSize().background(if (rgb.enabled) RGB_DECK_COLOR else Color.Transparent)) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val rowCount = rows.size
-        val keyboardRowHeight = ((maxHeight - 4.dp * (rowCount + 1)) / rowCount).coerceAtLeast(40.dp)
+        val keyboardRowHeight = ((maxHeight - keyGap * (rowCount + 1)) / rowCount).coerceAtLeast(40.dp)
         // Scroll rather than clip: on a short window the 40 dp floor makes the rows taller than
         // the stage, and the bottom row (Win, Space, arrows) would otherwise be cut off.
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(4.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            verticalArrangement = Arrangement.spacedBy(keyGap),
         ) {
-            for (row in rows) {
-                Row(Modifier.fillMaxWidth().height(keyboardRowHeight), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            var keyIndex = 0
+            for ((rowIndex, row) in rows.withIndex()) {
+                val rowWeight = row.sumOf { it.weight.toDouble() }.toFloat()
+                val keyY = rowIndex / (rows.size - 1).toFloat()
+                var keyX = 0f
+                Row(Modifier.fillMaxWidth().height(keyboardRowHeight), horizontalArrangement = Arrangement.spacedBy(keyGap)) {
                     for (cap in row) {
+                        val index = keyIndex++
                         val action = cap.action
+                        // The key's normalised centre, used to place it in the RGB field.
+                        val keyCenterX = (keyX + cap.weight / 2f) / rowWeight
+                        keyX += cap.weight
                         // The Caps key's dot mirrors the host's LED output report, not a local
                         // latch, so it is lit exactly while the host has caps lock on.
                         val isCaps =
                             action is KeyAction.Usage && action.usage == KeyUsage.CAPSLOCK
                         val isFn = action is KeyAction.Fn
+                        val pressed = action is KeyAction.Usage && action.usage in pressedKeys
                         val active = when (action) {
                             is KeyAction.Modifier -> (modifiers and action.bit) != 0
                             is KeyAction.Fn -> fnHeld
-                            is KeyAction.Usage -> action.usage in pressedKeys
+                            is KeyAction.Usage -> pressed
+                        }
+                        val usage = (action as? KeyAction.Usage)?.usage
+                        val backlight = if (rgb.enabled) {
+                            keyLight(
+                                rgb,
+                                keyCenterX,
+                                keyY,
+                                index = index,
+                                pressed = pressed,
+                                flashes = flashes,
+                                timeMillis = rgbClock,
+                            ).color
+                        } else {
+                            null
                         }
                         KeyboardKeyButton(
                             label = cap.label,
@@ -918,6 +1096,12 @@ private fun KeyboardStage(
                             hapticsEnabled = hapticsEnabled,
                             hapticsStrength = hapticsStrength,
                             onDown = {
+                                // Feed the backlight's reactive effects with a press at this key.
+                                if (rgb.enabled && usage != null) {
+                                    val now = System.currentTimeMillis() - rgbStart
+                                    flashes.add(Flash(usage, keyCenterX, keyY, now))
+                                    while (flashes.size > 12) flashes.removeAt(0)
+                                }
                                 when (action) {
                                     is KeyAction.Modifier -> onModifier(action.bit, true)
                                     is KeyAction.Fn -> onFn(true)
@@ -932,11 +1116,13 @@ private fun KeyboardStage(
                                 }
                             },
                             indicator = isCaps && capsLockLed,
+                            backlight = backlight,
                             modifier = Modifier.weight(cap.weight).fillMaxHeight(),
                         )
                     }
                 }
             }
         }
+    }
     }
 }
