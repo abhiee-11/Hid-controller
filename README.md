@@ -19,7 +19,7 @@ needed on the receiving side. Mode switching happens in the app and does not re-
   - Bytes are frozen per profile. The host caches the descriptor at pairing time, so **changing
     the host type requires re-pairing the host**; the Settings sheet says so and offers
     "I've re-paired the host".
-- Gamepad: 16 buttons, D-pad (hat switch), dual analog sticks, analog L2/R2 triggers, tilt
+- Gamepad: 16 buttons, D-pad (hat switch), dual analog sticks, digital L2/R2 triggers, tilt
 - Mouse: buttonless trackpad — tap click, two-finger tap right-click, two-finger scroll
   (vertical and horizontal), pinch zoom, double-tap then hold to drag, three-finger tap
   middle-click, three-finger swipes per host

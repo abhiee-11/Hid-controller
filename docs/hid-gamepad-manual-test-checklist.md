@@ -19,7 +19,7 @@ Host (tablet): any tablet that can pair to a Bluetooth HID gamepad
 ## Analog outputs (verified on the tablet, 2026-11-11)
 - [x] Left stick → `ABS_X` (right = +, down = +, the HID/Android gamepad convention).
 - [x] Right stick → `ABS_Z` / `ABS_RZ`.
-- [x] L2 / R2 (top strips) → `ABS_BRAKE` / `ABS_GAS`, 0 → 255 on a full press.
+- [x] L2 / R2 (top strips) → `ABS_BRAKE` / `ABS_GAS`, 255 on any press, 0 on release.
 - [x] Buttons, measured on the tablet: A→`BTN_GAMEPAD` (button 1), B→`BTN_EAST` (2),
       X→`BTN_NORTH` (4), Y→`BTN_WEST` (5), L1→`BTN_TL` (7), R1→`BTN_TR` (8),
       SEL→`BTN_SELECT` (11), START→`BTN_START` (12).
@@ -90,5 +90,6 @@ independent contacts. Android right-click, middle-click, and zoom are app-depend
 - [ ] Deny permissions → app shows a "Grant permissions" screen, no crash (retry works).
 
 ## Known current limitations (v1)
-- Triggers are binary (full pull) — the phone screen cannot sense gradual travel pressure.
+- Triggers are digital: any touch on the L2/R2 strip is a full pull. The phone screen cannot sense
+  gradual travel pressure, so there is no half press.
 - "Connected" devices list shows only already-paired tablets; discovery pairing is via the tablet side.

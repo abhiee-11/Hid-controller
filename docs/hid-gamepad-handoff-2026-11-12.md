@@ -7,7 +7,11 @@ Pick this up tomorrow. Everything below is measured, not inferred, unless marked
 
 - Branch `feat/touchpad-gestures`, local only (never pushed), not merged.
 - Build + tests: `.\gradlew.bat --console=plain testDebugUnitTest assembleDebug`
-  → **145 tests, 0 failures**.
+  → **143 tests, 0 failures**.
+- **The L2/R2 triggers are digital again** (commit `d7ca8a2`): a press anywhere on the strip
+  is a full pull (`ABS_GAS`/`ABS_BRAKE` 255), not a position ramp. They had been analog
+  position-ramped since `c1a1ece`, which put the centred "R2" label at half travel and made
+  the trigger read as dead. See "Trigger fix" below.
 - **The HID profile now follows the host type** (approach A, commit `3b24642`): the separate
   "HID profile" picker is gone. `profileForHostType` maps `ANDROID → COMPOSITE`,
   `WINDOWS → GAMEPAD_ONLY`; `HidGamepadManager.loadStoredProfile()` derives from `host_type`
@@ -58,6 +62,50 @@ Verified on the phone `<PHONE_SERIAL>` + tablet `<TABLET_SERIAL>` (2026-11-12):
 Note: this phone's ROM suppresses the app's `Log.i` output entirely (even after
 `setprop log.tag.HidGamepad VERBOSE`), so logcat is not a usable evidence channel on it; the
 tablet's `dumpsys input` is.
+
+## Trigger fix: L2 / R2 are digital (commit `d7ca8a2`)
+
+**Reported as:** "R2 not working".
+
+**Root cause (measured, not inferred).** L2/R2 were *analog position-ramped* pedals, not
+buttons. `pedalValue(yNorm)` mapped the vertical touch position inside the strip to 0..1
+(ramp from 10% to 90%), and the "R2" label was drawn with `Alignment.Center` in that strip —
+so the only visible affordance sat at exactly mid-travel. Measured on the tablet
+(2026-11-12, `getevent` on the gamepad node):
+
+| Touch on the R2 strip | `ABS_GAS` before the fix |
+|---|---|
+| y=180 (top) | 19 |
+| **y=221 (the "R2" label)** | **128** |
+| y=262 | 236 |
+| y=275 (bottom) | 255 |
+
+The host delivers the trigger as an **axis only** — `ABS_GAS`/`ABS_BRAKE`, mapped to
+`AXIS_RTRIGGER`/`AXIS_LTRIGGER` by the tablet's `Generic.kl` — and **never** emits a key
+event for it, so the value has to cross the game's own threshold. At 128/255 ≈ **0.47** a
+typical `axis > 0.5` check fails, which is what "not working" looked like. Full travel needed
+a touch in the bottom ~10% of the strip, which nothing on screen indicated.
+
+**Why it regressed:** L2/R2 were binary buttons (`model.rt = 1f` → 255) until commit
+`c1a1ece` ("feat(touchpad): buttonless gesture pad in mouse mode") replaced them with the
+ramp. The checklist still documented "Triggers are binary (full pull)" and
+"L2 / R2 → ABS_BRAKE / ABS_GAS, 0 → 255", so the code and the documented contract disagreed.
+
+**Fix (user chose digital triggers).** `pedalValue` now takes the pressed state instead of the
+touch position: any touch on the strip is a full pull, lifting is release. `PEDAL_RAMP_START`,
+`PEDAL_RAMP_END` and the position mapping are deleted. The per-pointer map is kept, so
+lifting one of two fingers on the same pedal does not drop the trigger while the other is
+still down.
+
+**Verified on the tablet after the fix** (`getevent`, clean capture):
+
+| Press | `ABS_GAS` / `ABS_BRAKE` after the fix |
+|---|---|
+| R2 on the label | `ABS_GAS 255` → 0 on release |
+| L2 on the label | `ABS_BRAKE 255` → 0 on release |
+| R2 at the top of the strip | `ABS_GAS 255` → 0 on release |
+
+The descriptor is unchanged, so no host needs to re-pair. Suite: **143 tests, 0 failures**.
 
 ## Verified on the tablet (composite profile)
 
