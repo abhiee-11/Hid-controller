@@ -164,9 +164,9 @@ class ProblemReportTest {
     fun `the hid state word never carries the host name`() {
         // The report goes to a public server: the *other* device's Bluetooth name, and its
         // MAC address when it has no friendly name, must never be in it.
-        val word = hidStateWord(HidGamepadManager.Status.Connected("ABHISKAR"))
+        val word = hidStateWord(HidGamepadManager.Status.Connected("Test Host"))
         assertEquals("connected", word)
-        assertFalse(word.contains("ABHISKAR"))
+        assertFalse(word.contains("Test Host"))
         assertFalse(
             hidStateWord(HidGamepadManager.Status.Connecting("My Lenovo Tab")).contains("Lenovo")
         )

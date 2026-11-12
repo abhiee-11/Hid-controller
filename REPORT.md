@@ -293,7 +293,7 @@ measurements are in `docs/hid-gamepad-handoff-2026-11-12.md`.
 | Unit tests | PASS | `gradlew testDebugUnitTest` → **143 tests, 0 failures**; clean rebuild from scratch, `assembleDebug` produces the APK |
 | The profile follows the host type | PASS | switching the host type to Windows PC cleared the re-pair warning (derived GAMEPAD_ONLY == paired); switching back to Android showed it again (derived COMPOSITE != paired) |
 | A stale `hid_profile` pref does not win | PASS | with `hid_profile=GAMEPAD_ONLY` still stored, the tablet re-paired and decoded the **composite** descriptor |
-| The tablet decodes the composite | PASS | one merged node `Abhiskar's vivo Y29 Keyboard`, `Sources: KEYBOARD \| DPAD \| GAMEPAD \| MOUSE \| STYLUS \| JOYSTICK`, 8-bit X/Y/Z/RZ plus `BRAKE`/`GAS` |
+| The tablet decodes the composite | PASS | one merged node `<HOST>`'s vivo Y29 Keyboard`, `Sources: KEYBOARD \| DPAD \| GAMEPAD \| MOUSE \| STYLUS \| JOYSTICK`, 8-bit X/Y/Z/RZ plus `BRAKE`/`GAS` |
 | Triggers | PASS | R2 on the label → `ABS_GAS 255` → 0 on release; L2 on the label → `ABS_BRAKE 255`; R2 at the top of the strip → `ABS_GAS 255` |
 | The host caches the descriptor | PASS | before the re-pair the tablet still showed the cached GAMEPAD_ONLY layout (16-bit X/Y/RX/RY) — the expected behaviour, and why the app warns |
 | The trigger reaches the host | PASS (as an axis only) | `ABS_GAS`/`ABS_BRAKE`, mapped to `AXIS_RTRIGGER`/`AXIS_LTRIGGER` by the tablet's `Generic.kl`. No key event is ever generated for it, so a game that reads the trigger strictly as `KEYCODE_BUTTON_R2` sees nothing — fixing that needs L2/R2 in the descriptor's button bits, and therefore a re-pair on every host |
