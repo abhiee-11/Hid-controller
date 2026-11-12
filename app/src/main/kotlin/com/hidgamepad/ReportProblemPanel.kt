@@ -159,7 +159,7 @@ fun ReportProblemPanel(
                     TextField(
                         value = topic,
                         onValueChange = { topic = it },
-                        label = { Text("ntfy topic") },
+                        label = { Text("Report topic") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                     )

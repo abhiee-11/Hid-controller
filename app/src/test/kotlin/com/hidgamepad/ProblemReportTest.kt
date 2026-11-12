@@ -164,7 +164,7 @@ class ProblemReportTest {
     fun `an invalid topic is refused without a network call`() = runBlocking {
         val outcome = ProblemReporter.send(topic = "not a topic", title = REPORT_TITLE, body = "boom")
         assertTrue(outcome is ReportOutcome.Failed)
-        assertEquals("The ntfy topic name is not valid.", (outcome as ReportOutcome.Failed).reason)
+        assertEquals("The topic name is not valid.", (outcome as ReportOutcome.Failed).reason)
     }
 
     @Test
