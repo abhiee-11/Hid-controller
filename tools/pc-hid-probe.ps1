@@ -16,8 +16,6 @@ param(
     [string]$OutFile = ""
 )
 
-Add-Type -AssemblyName System.Windows.Forms
-
 Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
@@ -101,14 +99,20 @@ function Read-Joysticks {
     return $found
 }
 
+function Pad-Signature($pad) {
+    "b=$($pad.Buttons) x=$($pad.X) y=$($pad.Y) z=$($pad.Z) rz=$($pad.Rz) pov=$($pad.Pov)"
+}
+
 $prevKeys = @{}
 $prevMouseX = -1; $prevMouseY = -1
 $prevButtons = 0
 $prevPads = @{}
 
-# Baseline: what Windows sees before we start.
+# Baseline: what Windows sees before we start. Seeding $prevPads from it means a pad that is
+# already visible is not reported as "appeared" on the first sample.
 $baselinePads = Read-Joysticks
 Add-Event ("gamepads visible at start: {0}" -f $(if ($baselinePads.Count) { ($baselinePads | ForEach-Object { "id=$($_.Id)" }) -join ',' } else { 'none' }))
+foreach ($pad in $baselinePads) { $prevPads["pad$($pad.Id)"] = Pad-Signature $pad }
 $cursor = New-Object HidProbeNative+POINT
 [void][HidProbeNative]::GetCursorPos([ref]$cursor)
 $prevMouseX = $cursor.X; $prevMouseY = $cursor.Y
@@ -141,13 +145,21 @@ while ((Get-Date) -lt $deadline) {
     }
 
     # Gamepads
+    $seenPads = @{}
     foreach ($pad in (Read-Joysticks)) {
         $key = "pad$($pad.Id)"
-        $sig = "b=$($pad.Buttons) x=$($pad.X) y=$($pad.Y) z=$($pad.Z) rz=$($pad.Rz) pov=$($pad.Pov)"
+        $seenPads[$key] = $true
+        $sig = Pad-Signature $pad
         if ($prevPads[$key] -ne $sig) {
             if (-not $prevPads.ContainsKey($key)) { Add-Event ("GAMEPAD {0} appeared: {1}" -f $key, $sig) }
             else { Add-Event ("GAMEPAD {0} {1}" -f $key, $sig) }
             $prevPads[$key] = $sig
+        }
+    }
+    foreach ($key in @($prevPads.Keys)) {
+        if (-not $seenPads.ContainsKey($key)) {
+            Add-Event ("GAMEPAD {0} disappeared" -f $key)
+            $prevPads.Remove($key)
         }
     }
 

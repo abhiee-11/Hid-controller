@@ -78,13 +78,13 @@ class GamepadProfileTest {
 
     @Test
     fun `the descriptor axes are X Y Rx Ry then Z and Rz`() {
-        val text = GAMEPAD_ONLY_DESCRIPTOR.toHex()
-        assertTrue(text.contains("09 30"))
-        assertTrue(text.contains("09 31"))
-        assertTrue(text.contains("09 33"))
-        assertTrue(text.contains("09 34"))
-        assertTrue(text.contains("09 32"))
-        assertTrue(text.contains("09 35"))
+        // Presence alone would pass even if the axes were reordered, so parse the fields and
+        // assert the declared order.
+        val fields = parseDescriptor(GAMEPAD_ONLY_DESCRIPTOR).fieldsFor(GAMEPAD_REPORT_ID)
+        val wide = fields.filter { it.reportSize == 16 }.flatMap { it.usages }
+        val narrow = fields.filter { it.reportSize == 8 }.flatMap { it.usages }
+        assertEquals(listOf(0x30, 0x31, 0x33, 0x34), wide) // X, Y, Rx, Ry
+        assertEquals(listOf(0x32, 0x35), narrow)           // Z, Rz
     }
 
     @Test

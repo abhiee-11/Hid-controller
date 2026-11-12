@@ -169,5 +169,5 @@ Honesty about the edges is part of the work:
 > gesture state machine, a byte-level descriptor parser in the test suite, and 182 unit tests.
 > Measured on real hardware rather than inferred from the specification.
 
-*(Screenshots: `docs/screenshots/` — gamepad, mouse, keyboard, settings, report panel and the
-five tutorial steps.)*
+*(Screenshots were captured on-device for review and are deliberately not committed: the
+repository ignores `*.png`, and a full-screen capture would show the paired host's name.)*

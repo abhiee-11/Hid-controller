@@ -38,11 +38,28 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
-private val REQUIRED_PERMISSIONS = arrayOf(
-    Manifest.permission.BLUETOOTH_CONNECT,
-    Manifest.permission.BLUETOOTH_ADVERTISE,
-    Manifest.permission.POST_NOTIFICATIONS,
-)
+/**
+ * The runtime permissions the HID device needs, on the API levels where they are runtime
+ * permissions. Below Android 12 the same capability is covered by the legacy BLUETOOTH and
+ * BLUETOOTH_ADMIN permissions, which the system grants at install time — so there is nothing
+ * to request and the gate is trivially satisfied.
+ */
+private val BLUETOOTH_PERMISSIONS: Array<String> =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE)
+    } else {
+        emptyArray()
+    }
+
+/**
+ * Asked for together with the Bluetooth permissions, but never a gate: refusing it only hides
+ * the foreground-service notification, and the controller still runs. Gating on it would brick
+ * the app on Android 13+ for a user who declined notifications.
+ */
+private val NOTIFICATION_PERMISSIONS = arrayOf(Manifest.permission.POST_NOTIFICATIONS)
+
+/** Everything the first-run dialog asks for. */
+private val REQUESTED_PERMISSIONS = BLUETOOTH_PERMISSIONS + NOTIFICATION_PERMISSIONS
 
 /** Fullscreen landscape gamepad; owns the manager lifecycle and permission flow. */
 class MainActivity : ComponentActivity() {
@@ -57,7 +74,9 @@ class MainActivity : ComponentActivity() {
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-            val granted = grants.values.all { it }
+            // Only the Bluetooth grants gate the app: a refused notification permission must
+            // not stop the controller from running.
+            val granted = BLUETOOTH_PERMISSIONS.all { grants[it] == true }
             permissionsGranted = granted
             if (granted) ensureHidService()
         }
@@ -112,7 +131,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun hasRequiredPermissions(): Boolean = REQUIRED_PERMISSIONS.all {
+    private fun hasRequiredPermissions(): Boolean = BLUETOOTH_PERMISSIONS.all {
         ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
     }
 
@@ -145,14 +164,15 @@ class MainActivity : ComponentActivity() {
         }
         receiverRegistered = true
 
-        val missing = REQUIRED_PERMISSIONS.filter {
+        val missing = BLUETOOTH_PERMISSIONS.filter {
             ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
         }
         if (missing.isEmpty()) {
             permissionsGranted = true
             ensureHidService()
         } else {
-            permissionLauncher.launch(REQUIRED_PERMISSIONS)
+            // Ask for notifications in the same dialog; a refusal does not gate the app.
+            permissionLauncher.launch(REQUESTED_PERMISSIONS)
         }
 
         setContent {
@@ -212,8 +232,8 @@ class MainActivity : ComponentActivity() {
                             fontSize = 14.sp,
                         )
                         Button(onClick = {
-                            if (REQUIRED_PERMISSIONS.any { shouldShowRequestPermissionRationale(it) }) {
-                                permissionLauncher.launch(REQUIRED_PERMISSIONS)
+                            if (REQUESTED_PERMISSIONS.any { shouldShowRequestPermissionRationale(it) }) {
+                                permissionLauncher.launch(REQUESTED_PERMISSIONS)
                             } else {
                                 // Permanently denied: the system dialog will never show again.
                                 startActivity(

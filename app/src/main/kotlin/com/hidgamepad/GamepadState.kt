@@ -447,6 +447,3 @@ private val DESCRIPTOR_PATTERN = intArrayOf(
 )
 
 val COMBINED_HID_DESCRIPTOR: ByteArray = ByteArray(DESCRIPTOR_PATTERN.size) { DESCRIPTOR_PATTERN[it].toByte() }
-
-/** Backwards-compatible name; this is the frozen composite HID descriptor. */
-val GAMEPAD_DESCRIPTOR: ByteArray = COMBINED_HID_DESCRIPTOR

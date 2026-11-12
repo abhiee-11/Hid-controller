@@ -628,9 +628,6 @@ class HidGamepadManager(context: Context) {
         sendReportNow(GAMEPAD_REPORT_ID, report)
     }
 
-    /** Backwards-compatible alias for the gamepad-only push path. */
-    fun update(state: GamepadState) = updateGamepad(state)
-
     fun updateKeyboard(state: KeyboardState) {
         if (hostDevice == null) return
         val report = state.encodeReport()

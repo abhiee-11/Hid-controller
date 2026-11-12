@@ -1,6 +1,7 @@
 package com.hidgamepad
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -84,6 +85,6 @@ class TouchpadGesturePipelineTest {
         c.frame(120)
 
         assertEquals(0, c.mouse.count { it.buttons != 0 })
-        assertEquals(true, c.mouse.any { it.wheel != 0 })
+        assertTrue(c.mouse.any { it.wheel != 0 })
     }
 }

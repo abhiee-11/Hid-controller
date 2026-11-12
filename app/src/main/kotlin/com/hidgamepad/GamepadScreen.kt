@@ -712,7 +712,12 @@ private fun KeyboardStage(
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val rowCount = rows.size
         val keyboardRowHeight = ((maxHeight - 4.dp * (rowCount + 1)) / rowCount).coerceAtLeast(40.dp)
-        Column(Modifier.fillMaxSize().padding(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        // Scroll rather than clip: on a short window the 40 dp floor makes the rows taller than
+        // the stage, and the bottom row (Win, Space, arrows) would otherwise be cut off.
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
             for (row in rows) {
                 Row(Modifier.fillMaxWidth().height(keyboardRowHeight), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (cap in row) {

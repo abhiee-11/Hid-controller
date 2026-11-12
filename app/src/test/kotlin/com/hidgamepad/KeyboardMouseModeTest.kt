@@ -72,11 +72,16 @@ class KeyboardMouseModeTest {
     }
 
     @Test
-    fun `mouse button bits are left right middle`() {
-        assertEquals(0x01, MouseState(buttons = 0x01).encodeReport()[0].toInt() and 0xFF)
-        assertEquals(0x02, MouseState(buttons = 0x02).encodeReport()[0].toInt() and 0xFF)
-        assertEquals(0x04, MouseState(buttons = 0x04).encodeReport()[0].toInt() and 0xFF)
-        assertEquals(0x10, MouseState(buttons = 0x10).encodeReport()[0].toInt() and 0xFF)
+    fun `mouse button bits land in byte zero and never bleed into movement`() {
+        // Five one-bit buttons are declared (bits 0-4), so those five bits are the buttons.
+        for (bit in listOf(0x01, 0x02, 0x04, 0x08, 0x10)) {
+            assertEquals(bit, MouseState(buttons = bit).encodeReport()[0].toInt() and 0xFF)
+        }
+        // The button field is one byte on the wire: a wider value must be masked, not spilled
+        // into the dx byte.
+        val wide = MouseState(buttons = 0x1FF).encodeReport()
+        assertEquals(0xFF, wide[0].toInt() and 0xFF)
+        assertEquals(0, wide[1].toInt())
     }
 
     @Test

@@ -17,13 +17,20 @@ import kotlin.math.roundToInt
  */
 object HapticBuzz {
 
+    /** The vibrator amplitude for a strength multiplier, saturated at the vibrator's maximum. */
+    fun amplitudeFor(strength: Float): Int =
+        (255f * strength.coerceIn(0.25f, 1.5f)).roundToInt().coerceIn(1, 255)
+
+    /** The buzz length in ms for a strength multiplier. */
+    fun durationMsFor(strength: Float): Int =
+        (30f * strength.coerceIn(0.25f, 1.5f)).coerceIn(10f, 60f).toInt()
+
     /** Vibrate once with the given strength multiplier; no-op without a usable vibrator. */
     fun buzz(context: Context, strength: Float) {
         val vibrator = vibrator(context) ?: return
         if (!vibrator.hasVibrator()) return
-        val clamped = strength.coerceIn(0.25f, 1.5f)
-        val amplitude = (255f * clamped).roundToInt().coerceIn(1, 255)
-        val durationMs = (30f * clamped).coerceIn(10f, 60f).toInt()
+        val amplitude = amplitudeFor(strength)
+        val durationMs = durationMsFor(strength)
         try {
             val effectAmplitude = if (vibrator.hasAmplitudeControl()) amplitude else VibrationEffect.DEFAULT_AMPLITUDE
             vibrator.vibrate(VibrationEffect.createOneShot(durationMs.toLong(), effectAmplitude))

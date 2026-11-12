@@ -77,6 +77,12 @@ fun buildReportBody(description: String, diagnostics: String?): String {
 }
 
 /**
+ * Shown when the POST never reached the server. The wording is deliberate and pinned by the
+ * user; it is also the `-1` branch of [reportFailureReason], so the two can never drift.
+ */
+const val OFFLINE_FAILURE_REASON = "Check your device connection pig"
+
+/**
  * The reason a publish failed, or null when it succeeded.
  *
  * The messages are aimed at the person who pressed the button, not at a network engineer,
@@ -89,7 +95,7 @@ fun reportFailureReason(code: Int): String? = when {
     code == 404 -> "The report could not be delivered. The recipient's topic is not set up."
     code == 413 -> "The report is too long. Shorten the description."
     code == 429 -> "Too many reports sent in a short time. Wait a moment and try again."
-    code == -1 -> "Check your device connection pig"
+    code == -1 -> OFFLINE_FAILURE_REASON
     else -> "The report could not be delivered. Try again later."
 }
 
@@ -162,11 +168,11 @@ object ProblemReporter {
             } else {
                 ReportOutcome.Failed(reason)
             }
-        } catch (e: IOException) {
-            ReportOutcome.Failed(
-                reportFailureReason(-1) ?: "Could not reach the report service."
-            )
-        } catch (e: SecurityException) {
+        } catch (_: IOException) {
+            // The request never reached the server: report the pinned offline message rather
+            // than the generic status-code branch, which is unreachable for -1.
+            ReportOutcome.Failed(OFFLINE_FAILURE_REASON)
+        } catch (_: SecurityException) {
             ReportOutcome.Failed("The app is not allowed to use the internet.")
         } finally {
             connection?.disconnect()

@@ -310,9 +310,10 @@ class TouchpadGestureTest {
     }
 
     @Test
-    fun `second finger landing after the settle window is still a two finger gesture`() {
-        // Real hardware: one finger lands, jitters a few pixels, and the second finger
-        // arrives well after the 40 ms settle window. The family must still become TWO.
+    fun `second finger landing after the first is still a two finger gesture`() {
+        // Real hardware: one finger lands, jitters a few pixels, and the second finger arrives
+        // a few frames later. There is no fixed settle timer — only the tap window commits the
+        // family — so the gesture must still become TWO.
         val r = recog()
         r.frame(fr(0, pt(1, 100f, 200f)))
         r.frame(fr(50, pt(1, 103f, 200f)))

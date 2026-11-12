@@ -2,7 +2,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Runtime-requested; needed for HID app registration, device list, connection. -->
+    <!--
+      Bluetooth, split by API level. On Android 12+ the two runtime permissions below cover
+      everything. On Android 8-11 those names do not exist, so without the legacy pair the app
+      would fail every permission check and never register the HID device — despite the
+      README's "Android 8.0+" claim.
+    -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <!-- Runtime-requested on Android 12+; needed for HID app registration, device list, connection. -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.VIBRATE" />

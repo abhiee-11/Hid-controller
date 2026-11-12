@@ -237,7 +237,7 @@ fun TutorialPanel(
                             )
                             ChoiceRow(
                                 title = "Keyboard",
-                                detail = "A full QWERTY layout with a symbols layer.",
+                                detail = "A full QWERTY layout with a function row.",
                                 selected = mode == ControllerMode.KEYBOARD,
                                 onClick = { onMode(ControllerMode.KEYBOARD) },
                             )
@@ -545,13 +545,6 @@ private fun TutorialArtwork(step: TutorialStep, modifier: Modifier = Modifier) {
                     radius = w * 0.10f,
                     center = Offset(w * 0.78f, h * 0.50f),
                     style = Stroke(width = 3.dp.toPx()),
-                )
-                drawLine(
-                    colors.accent,
-                    Offset(w * 0.36f, h * 0.50f),
-                    Offset(w * 0.64f, h * 0.50f),
-                    strokeWidth = 3.dp.toPx(),
-                    cap = StrokeCap.Round,
                 )
                 drawLine(
                     colors.accent,

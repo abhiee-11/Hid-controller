@@ -3,22 +3,28 @@ package com.hidgamepad
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import kotlin.math.roundToInt
 
+/**
+ * The haptic arithmetic.
+ *
+ * [HapticBuzz.buzz] itself needs a real Android vibrator, so what these tests pin is the pure
+ * amplitude/duration mapping that `buzz` calls — not a copy of the formula, which would keep
+ * passing even if the production numbers changed.
+ */
 class HapticBuzzTest {
 
     @Test
-    fun strengthIsClampedToSupportedRange() {
-        assertEquals(0.25f, 0.1f.coerceIn(0.25f, 1.5f))
-        assertEquals(1.5f, 3.0f.coerceIn(0.25f, 1.5f))
-        assertEquals(1.0f, 1.0f.coerceIn(0.25f, 1.5f))
+    fun `strength is clamped to the supported range`() {
+        // 0.1 clamps up to the 0.25 floor; 3.0 clamps down to the 1.5 ceiling.
+        assertEquals(64, HapticBuzz.amplitudeFor(0.1f))
+        assertEquals(255, HapticBuzz.amplitudeFor(3.0f))
     }
 
     @Test
-    fun amplitudeScalesWithStrength() {
-        val less = (255f * 0.25f).roundToInt().coerceIn(1, 255)
-        val normal = (255f * 1.0f).roundToInt().coerceIn(1, 255)
-        val more = (255f * 1.5f).roundToInt().coerceIn(1, 255)
+    fun `amplitude scales with strength`() {
+        val less = HapticBuzz.amplitudeFor(0.25f)
+        val normal = HapticBuzz.amplitudeFor(1.0f)
+        val more = HapticBuzz.amplitudeFor(1.5f)
         assertEquals(64, less)
         assertEquals(255, normal)
         assertEquals(255, more) // saturated at max
@@ -26,12 +32,9 @@ class HapticBuzzTest {
     }
 
     @Test
-    fun durationScalesWithStrength() {
-        val lessMs = (30f * 0.25f).coerceIn(10f, 60f).toInt()
-        val normalMs = (30f * 1.0f).coerceIn(10f, 60f).toInt()
-        val moreMs = (30f * 1.5f).coerceIn(10f, 60f).toInt()
-        assertEquals(10, lessMs)
-        assertEquals(30, normalMs)
-        assertEquals(45, moreMs)
+    fun `duration scales with strength`() {
+        assertEquals(10, HapticBuzz.durationMsFor(0.25f))
+        assertEquals(30, HapticBuzz.durationMsFor(1.0f))
+        assertEquals(45, HapticBuzz.durationMsFor(1.5f))
     }
 }

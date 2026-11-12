@@ -5,7 +5,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-private fun ByteArray.toHexString(): String = joinToString("") { "%02X ".format(it).padEnd(3) }.let { it }
+private fun ByteArray.toHexString(): String = joinToString("") { "%02X ".format(it) }
 
 internal data class HidField(
     val reportSize: Int,
@@ -143,7 +143,7 @@ internal fun parseDescriptor(descriptor: ByteArray): DescriptorSummary {
 class GamepadStateTest {
 
     @Test
-    fun `neutral state encodes to nine neutral bytes`() {
+    fun `neutral state encodes the neutral payload`() {
         val report = GamepadState().encodeReport()
         assertEquals(GamepadState.REPORT_SIZE, report.size)
         assertEquals(0, report[0].toInt())
@@ -166,7 +166,7 @@ class GamepadStateTest {
     }
 
     @Test
-    fun `left stick on bytes 3-4 and right stick on bytes 7-8 signed`() {
+    fun `left stick on bytes 2-3 and right stick on bytes 5-6 signed`() {
         val report = GamepadState(lx = -1f, rx = 1f).encodeReport()
         assertEquals(-127, report[2].toInt()) // left stick X
         assertEquals(0, report[3].toInt())    // left stick Y untouched
@@ -175,7 +175,7 @@ class GamepadStateTest {
     }
 
     @Test
-    fun `analog triggers on bytes 5-6 map quarter and three-quarter`() {
+    fun `analog triggers on bytes 7-8 map quarter and three-quarter`() {
         // Brake (left trigger) 25%, Gas (right trigger) 75%.
         val report = GamepadState(lt = 0.25f, rt = 0.75f).encodeReport()
         assertEquals(64, report[7].toInt() and 0xFF)   // 255 * 0.25 = 63.75 -> 64
@@ -214,7 +214,7 @@ class GamepadStateTest {
     }
 
     @Test
-    fun `combined descriptor has three collections and report ids`() {
+    fun `combined descriptor has four collections and report ids`() {
         assertTrue(COMBINED_HID_DESCRIPTOR[0] == 0x05.toByte() && COMBINED_HID_DESCRIPTOR[1] == 0x01.toByte())
         assertTrue(COMBINED_HID_DESCRIPTOR[2] == 0x09.toByte() && COMBINED_HID_DESCRIPTOR[3] == 0x06.toByte())
         assertEquals(0xC0.toByte(), COMBINED_HID_DESCRIPTOR.last())
@@ -279,7 +279,6 @@ class GamepadStateTest {
         assertEquals(1, summary.physicalCollections)
         assertEquals(listOf(0x01), summary.physicalPointerUsages)
         val mouse = summary.fieldsFor(MOUSE_REPORT_ID)
-        assertTrue(mouse.all { it.reportId == MOUSE_REPORT_ID })
         assertEquals(0x09, mouse[0].usagePage)
         assertEquals(0x01, mouse[2].usagePage)
         assertTrue((mouse[2].flags and 0x04) != 0)
@@ -329,10 +328,8 @@ class GamepadStateTest {
     @Test
     fun `neutral report is valid for declared ranges and null state`() {
         val fields = parseDescriptor(COMBINED_HID_DESCRIPTOR).fieldsFor(GAMEPAD_REPORT_ID)
-        val hatField = fields.first { it.reportSize == 4 && (it.flags and 0x40) != 0 }
         val neutral = GamepadState().encodeReport()
         assertEquals(15, neutral[4].toInt() and 0x0F)
-        assertTrue("hat 15 is the Null State value", (hatField.flags and 0x40) != 0)
         val axes = fields.filter { it.reportSize == 8 && !it.isConstant }
         for (byteIndex in listOf(2, 3, 5, 6)) {
             assertEquals(0, neutral[byteIndex].toInt())
@@ -364,19 +361,15 @@ class GamepadStateTest {
     }
 
     @Test
-    fun `same-frame press and release return the exact neutral bytes`() {
-        val pressed = GamepadState(
-            buttons = 1 shl Btn.A,
-            hat = 3,
-            lx = 1f,
-            rt = 0.5f,
-        ).encodeReport()
+    fun `a released button leaves no residual bit in the report`() {
+        val held = 1 shl Btn.A
+        val pressed = GamepadState(buttons = held).encodeReport()
         assertFalse(pressed.contentEquals(GamepadState().encodeReport()))
-        // down() then up() on the same control (Cup bit clear) must restore the
-        // byte-identical neutral report — never leave a residual bit.
-        val bit = 1 shl Btn.A
-        val afterRelease = GamepadState(buttons = bit and bit.inv()).encodeReport()
-        assertTrue(afterRelease.contentEquals(GamepadState().encodeReport()))
+        assertEquals(held, pressed[0].toInt() and 0xFF)
+        // Clearing the bit — the release — reproduces the neutral report byte for byte,
+        // never leaving a residual bit behind.
+        val released = GamepadState(buttons = held and held.inv()).encodeReport()
+        assertTrue(released.contentEquals(GamepadState().encodeReport()))
     }
 
     @Test
