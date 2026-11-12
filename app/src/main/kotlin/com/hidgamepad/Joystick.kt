@@ -1,6 +1,8 @@
 package com.hidgamepad
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -10,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -20,10 +23,13 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -36,11 +42,14 @@ import kotlin.math.atan2
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 
-// Shared palette for the on-screen controls.
-val TrackRing = Color(0xFF343640)
-val StickKnob = Color(0xFFB0B6C8)
-val DpadColor = Color(0xFF555C6B)
-val DpadHeld = Color(0xFF9EB1D8)
+// The palette for the on-screen controls lives in PadColors.
+
+// Shared drawing metrics, so the sticks, the D-pad and the shoulders stay in step.
+private val KNOB_RADIUS = 22.dp
+private val HAIRLINE = 1.5f.dp
+private val DPAD_ARM_WIDTH = 26.dp
+private val DPAD_CORNER = 8.dp
+private val PAD_CORNER = 14.dp
 
 /** One analog stick drawn on a Canvas. Handles one pointer at a time; other pointers can
  *  rest on buttons elsewhere because this widget only claims its own hit area.
@@ -98,20 +107,30 @@ fun JoystickControl(
                 },
         ) {
             val radius = size.width / 2f
-            drawCircle(TrackRing, radius = radius)
-            drawCircle(TrackRing.copy(alpha = 0.5f), radius = radius * 0.08f) // deadzone hint
+            val center = Offset(radius, radius)
+            val knobRadius = minOf(KNOB_RADIUS.toPx(), radius * 0.62f)
+            // Base: a filled disc with a hairline rim.
+            drawCircle(PadColors.surface, radius = radius)
+            drawCircle(PadColors.border, radius = radius, style = Stroke(width = HAIRLINE.toPx()))
+            // Dashed inner ring marks the travel limit.
             drawCircle(
-                StickKnob.copy(alpha = 0.4f),
-                radius = radius * 0.45f,
-                center = Offset(radius, radius) + knob,
+                PadColors.border,
+                radius = radius * 0.66f,
+                style = Stroke(
+                    width = HAIRLINE.toPx(),
+                    pathEffect = PathEffect.dashPathEffect(
+                        floatArrayOf(6f.dp.toPx(), 6f.dp.toPx()),
+                    ),
+                ),
             )
+            // Knob.
+            drawCircle(PadColors.stickKnob, radius = knobRadius, center = center + knob)
             drawCircle(
-                StickKnob,
-                radius = radius * 0.45f,
-                center = Offset(radius, radius) + knob,
-                style = Stroke(width = 5f),
+                PadColors.stickKnobBorder,
+                radius = knobRadius,
+                center = center + knob,
+                style = Stroke(width = 2f.dp.toPx()),
             )
-            drawCircle(StickKnob.copy(alpha = 0.6f), radius = radius * 0.26f, center = Offset(radius, radius) + knob)
         }
     }
 }
@@ -175,27 +194,106 @@ fun DPadControl(
                 },
         ) {
             val half = size.width / 2f
-            val arm = half * 0.62f
-            val thick = half * 0.36f
-            drawRoundRect(DpadColor, topLeft = Offset(half - thick / 2, half - arm), size = Size(thick, arm * 2))
-            drawRoundRect(DpadColor, topLeft = Offset(half - arm, half - thick / 2), size = Size(arm * 2, thick))
-            for ((_, zone) in zones) drawHeldArm(zone, half, arm, thick)
-            drawCircle(DpadHeld.copy(alpha = 0.3f), radius = half * 0.11f, center = Offset(half, half))
+            val arm = half
+            val thick = minOf(DPAD_ARM_WIDTH.toPx(), size.width * 0.42f)
+            val corner = CornerRadius(DPAD_CORNER.toPx(), DPAD_CORNER.toPx())
+            drawRoundRect(
+                PadColors.surface,
+                topLeft = Offset(half - thick / 2, half - arm),
+                size = Size(thick, arm * 2),
+                cornerRadius = corner,
+            )
+            drawRoundRect(
+                PadColors.surface,
+                topLeft = Offset(half - arm, half - thick / 2),
+                size = Size(arm * 2, thick),
+                cornerRadius = corner,
+            )
+            val held = heldCardinals(zones.values)
+            for (zone in held) drawHeldArm(zone, half, arm, thick)
+            drawTriangles(half, thick, held)
         }
     }
 }
 
 private fun DrawScope.drawHeldArm(zone: Int, half: Float, arm: Float, thick: Float) {
+    val corner = CornerRadius(DPAD_CORNER.toPx(), DPAD_CORNER.toPx())
     when (zone) {
-        0 -> drawRoundRect(DpadHeld, Offset(half - thick / 2, half - arm), Size(thick, arm * 0.72f))
-        2 -> drawRoundRect(DpadHeld, Offset(half + thick / 2, half - thick / 2), Size(arm - thick / 2, thick))
-        4 -> drawRoundRect(DpadHeld, Offset(half - thick / 2, half + arm * 0.28f), Size(thick, arm * 0.72f))
-        6 -> drawRoundRect(DpadHeld, Offset(half - arm, half - thick / 2), Size(arm - thick / 2, thick))
-        1 -> drawRect(DpadHeld, Offset(half + thick * 0.1f, half - arm * 0.82f), Size(arm * 0.5f, arm * 0.5f))
-        3 -> drawRect(DpadHeld, Offset(half + thick * 0.1f, half + arm * 0.32f), Size(arm * 0.5f, arm * 0.5f))
-        5 -> drawRect(DpadHeld, Offset(half - arm * 0.95f, half + arm * 0.32f), Size(arm * 0.5f, arm * 0.5f))
-        7 -> drawRect(DpadHeld, Offset(half - arm * 0.95f, half - arm * 0.82f), Size(arm * 0.5f, arm * 0.5f))
+        0 -> drawRoundRect(PadColors.accent, Offset(half - thick / 2, half - arm), Size(thick, arm), corner)
+        2 -> drawRoundRect(PadColors.accent, Offset(half, half - thick / 2), Size(arm, thick), corner)
+        4 -> drawRoundRect(PadColors.accent, Offset(half - thick / 2, half), Size(thick, arm), corner)
+        6 -> drawRoundRect(PadColors.accent, Offset(half - arm, half - thick / 2), Size(arm, thick), corner)
     }
+}
+
+/**
+ * The cardinal directions a set of hat zones lights up. A diagonal lights both of its
+ * cardinals, so the highlight always matches the direction the finger is in.
+ */
+private fun heldCardinals(zones: Collection<Int>): Set<Int> {
+    val out = mutableSetOf<Int>()
+    for (z in zones) {
+        when (z) {
+            0 -> out += 0
+            2 -> out += 2
+            4 -> out += 4
+            6 -> out += 6
+            1 -> { out += 0; out += 2 }
+            3 -> { out += 2; out += 4 }
+            5 -> { out += 4; out += 6 }
+            7 -> { out += 6; out += 0 }
+        }
+    }
+    return out
+}
+
+/** Small direction triangles at the tip of each arm, brightened when that direction is held. */
+private fun DrawScope.drawTriangles(half: Float, thick: Float, held: Set<Int>) {
+    val t = 5f.dp.toPx()
+    val margin = 4f.dp.toPx()
+    val d = half - t - margin
+    if (d <= 0f) return
+    fun shade(zone: Int) = if (zone in held) PadColors.accent else PadColors.secondary
+    // North (up)
+    drawPath(
+        Path().apply {
+            moveTo(half, half - d - t)
+            lineTo(half - t, half - d + t)
+            lineTo(half + t, half - d + t)
+            close()
+        },
+        shade(0),
+    )
+    // East (right)
+    drawPath(
+        Path().apply {
+            moveTo(half + d + t, half)
+            lineTo(half + d - t, half - t)
+            lineTo(half + d - t, half + t)
+            close()
+        },
+        shade(2),
+    )
+    // South (down)
+    drawPath(
+        Path().apply {
+            moveTo(half, half + d + t)
+            lineTo(half - t, half + d - t)
+            lineTo(half + t, half + d - t)
+            close()
+        },
+        shade(4),
+    )
+    // West (left)
+    drawPath(
+        Path().apply {
+            moveTo(half - d - t, half)
+            lineTo(half - d + t, half - t)
+            lineTo(half - d + t, half + t)
+            close()
+        },
+        shade(6),
+    )
 }
 
 /** Touch delta -> hat index (0 N, 2 E, 4 S, 6 W, odd = diagonals). Center dead area = null. */
@@ -263,6 +361,8 @@ fun PedalControl(
 ) {
     val onValueNow by rememberUpdatedState(onValue)
     val values = remember { mutableStateMapOf<Long, Float>() }
+    // Read in composition so the label and the fill follow the press state.
+    val active = combinePedal(values.values) > 0.01f
     Box(modifier.size(width, height).padding(horizontal = 1.dp)) {
         Canvas(
             Modifier
@@ -297,24 +397,19 @@ fun PedalControl(
                     }
                 },
         ) {
-            val corner = size.width / 6f
-            drawRoundRect(TrackRing, cornerRadius = CornerRadius(corner, corner))
-            val fill = combinePedal(values.values)
-            if (fill > 0.01f) {
-                val fillH = (size.height - 8f) * fill
-                drawRoundRect(
-                    DpadHeld.copy(alpha = 0.85f),
-                    topLeft = Offset(2f, size.height - 4f - fillH),
-                    size = Size(size.width - 4f, fillH),
-                    cornerRadius = CornerRadius(corner * 0.7f, corner * 0.7f),
-                )
+            val corner = CornerRadius(PAD_CORNER.toPx(), PAD_CORNER.toPx())
+            drawRoundRect(PadColors.surface, cornerRadius = corner)
+            drawRoundRect(PadColors.border, cornerRadius = corner, style = Stroke(width = HAIRLINE.toPx()))
+            if (active) {
+                drawRoundRect(PadColors.accent.copy(alpha = 0.55f), cornerRadius = corner)
             }
         }
         Text(
             label,
-            color = Color.White,
+            color = if (active) PadColors.text else PadColors.secondary,
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
             modifier = Modifier.align(Alignment.Center),
         )
     }
@@ -341,7 +436,10 @@ fun GamepadButton(
     val onUpNow by rememberUpdatedState(onUp)
     val hapticNow by rememberUpdatedState(hapticsEnabled)
     val strengthNow by rememberUpdatedState(hapticsStrength)
-    Box(modifier.size(dpSize), contentAlignment = Alignment.Center) {
+    Box(
+        modifier.size(dpSize).scale(if (pressed) 0.95f else 1f),
+        contentAlignment = Alignment.Center,
+    ) {
         Canvas(
             Modifier
                 .fillMaxSize()
@@ -371,10 +469,81 @@ fun GamepadButton(
                     }
                 },
         ) {
-            drawCircle(if (pressed) color.copy(alpha = 0.85f) else color.copy(alpha = 0.5f))
-            drawCircle(color, radius = size.width / 5f, style = Stroke(width = 3f))
+            val stroke = HAIRLINE.toPx()
+            // A dark tinted disc with a hairline ring in the button's own colour.
+            drawCircle(color.copy(alpha = if (pressed) 0.45f else 0.22f))
+            drawCircle(
+                color.copy(alpha = if (pressed) 1f else 0.9f),
+                radius = size.width / 2f - stroke,
+                style = Stroke(width = stroke),
+            )
         }
-        Text(label, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        Text(label, color = color, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+/**
+ * A rounded rectangular press-and-hold button: the shoulders and the centre pills.
+ *
+ * Same press/release contract as [GamepadButton] — instant press state, release on lift or
+ * cancel — only the shape differs.
+ */
+@Composable
+fun PadRectButton(
+    label: String,
+    width: Dp,
+    height: Dp,
+    color: Color,
+    hapticsEnabled: Boolean,
+    hapticsStrength: Float,
+    onDown: () -> Unit,
+    onUp: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var pressed by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val onDownNow by rememberUpdatedState(onDown)
+    val onUpNow by rememberUpdatedState(onUp)
+    val hapticNow by rememberUpdatedState(hapticsEnabled)
+    val strengthNow by rememberUpdatedState(hapticsStrength)
+    val shape = RoundedCornerShape(PAD_CORNER)
+    Box(
+        modifier
+            .size(width, height)
+            .scale(if (pressed) 0.95f else 1f)
+            .background(if (pressed) color.copy(alpha = 0.42f) else PadColors.surface, shape)
+            .border(1.dp, if (pressed) color else PadColors.border, shape)
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    var wasPressed = false
+                    try {
+                        awaitFirstDown(requireUnconsumed = false)
+                        if (!pressed) {
+                            pressed = true
+                            wasPressed = true
+                            if (hapticNow) {
+                                HapticBuzz.buzz(context, strengthNow)
+                            }
+                            onDownNow()
+                        }
+                        waitForUpOrCancellation()
+                    } finally {
+                        if (wasPressed || pressed) {
+                            pressed = false
+                            onUpNow()
+                        }
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = PadColors.text,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
     }
 }
 
@@ -420,11 +589,23 @@ fun KeyboardKeyButton(
                     }
                 },
         ) {
+            val keyCorner = CornerRadius(8f.dp.toPx(), 8f.dp.toPx())
             drawRoundRect(
-                if (active || pressed) DpadHeld else TrackRing,
-                cornerRadius = CornerRadius(10f, 10f),
+                if (active || pressed) PadColors.accent.copy(alpha = 0.45f) else PadColors.surface,
+                cornerRadius = keyCorner,
+            )
+            drawRoundRect(
+                PadColors.border,
+                cornerRadius = keyCorner,
+                style = Stroke(width = HAIRLINE.toPx()),
             )
         }
-        Text(label, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(
+            label,
+            color = PadColors.text,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
     }
 }
