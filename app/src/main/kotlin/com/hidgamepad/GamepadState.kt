@@ -51,8 +51,14 @@ fun controllerModeFromStorage(name: String?): ControllerMode =
 fun hostTypeFromStorage(name: String?): HostType =
     runCatching { HostType.valueOf(name ?: "") }.getOrDefault(HostType.WINDOWS)
 
-fun needsOnboarding(setupComplete: Boolean, lastHostAddress: String?): Boolean =
-    !setupComplete || lastHostAddress.isNullOrBlank()
+/**
+ * True until the user has been through the tutorial.
+ *
+ * The tutorial is a **one-time** thing: once it has been finished — or skipped and confirmed —
+ * it does not come back on its own, even if no host has been chosen yet. Choosing a host is
+ * the Devices screen's job. The tutorial can still be replayed from Settings.
+ */
+fun needsOnboarding(setupComplete: Boolean): Boolean = !setupComplete
 
 fun pairInstructions(hostType: HostType): String = when (hostType) {
     HostType.WINDOWS -> "1. Turn Bluetooth on on both devices.\n" +

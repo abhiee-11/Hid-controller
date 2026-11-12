@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -89,13 +90,13 @@ private fun safeDeviceAddress(device: BluetoothDevice): String = try {
     ""
 }
 
-private fun modeLabel(mode: ControllerMode): String = when (mode) {
+fun modeLabel(mode: ControllerMode): String = when (mode) {
     ControllerMode.GAMEPAD -> "Gamepad"
     ControllerMode.MOUSE -> "Mouse"
     ControllerMode.KEYBOARD -> "Keyboard"
 }
 
-private fun hostTitle(hostType: HostType): String = when (hostType) {
+fun hostTitle(hostType: HostType): String = when (hostType) {
     HostType.WINDOWS -> "Windows PC"
     HostType.ANDROID -> "Android phone or tablet"
 }
@@ -135,12 +136,12 @@ fun GamepadScreen(
     var controllerMode by remember { mutableStateOf(controllerModeFromStorage(prefs.getString("controller_mode", null))) }
     var mouseSensitivity by remember { mutableStateOf(prefs.getFloat("mouse_sensitivity", 1f)) }
     var needsSetup by remember {
-        mutableStateOf(needsOnboarding(prefs.getBoolean("setup_complete", false), prefs.getString("last_host_address", null)))
+        mutableStateOf(needsOnboarding(prefs.getBoolean("setup_complete", false)))
     }
-    var onboardingStep by remember { mutableStateOf(0) }
+    var onboardingStep by remember { mutableStateOf(TutorialStep.start) }
     var modeNotice by remember { mutableStateOf("") }
     if (needsSetup) {
-        SetupPanel(
+        TutorialPanel(
             hostType = hostType,
             mode = controllerMode,
             bondedDevices = bondedDevices,
@@ -471,7 +472,12 @@ fun GamepadScreen(
                 },
                 onChangeDevice = { settingsOpen = false; devicesOpen = true },
                 onDiscoverable = onDiscoverable,
-                onRunSetup = { settingsOpen = false; onboardingStep = 1; needsSetup = true },
+                onRunSetup = {
+                    // Replaying the tutorial starts at the beginning, not halfway through.
+                    settingsOpen = false
+                    onboardingStep = TutorialStep.start
+                    needsSetup = true
+                },
                 onReportProblem = { settingsOpen = false; reportOpen = true },
                 onMode = { switchMode(it) },
                 onHostType = { newType ->
@@ -524,81 +530,6 @@ fun GamepadScreen(
     }
 }
 
-@Composable
-private fun SetupPanel(
-    hostType: HostType,
-    mode: ControllerMode,
-    bondedDevices: () -> List<BluetoothDevice>,
-    onDiscoverable: () -> Unit,
-    onHostType: (HostType) -> Unit,
-    onMode: (ControllerMode) -> Unit,
-    onConnect: (BluetoothDevice) -> Boolean,
-    onStep: (Int) -> Unit,
-    step: Int,
-    onFinish: () -> Unit,
-) {
-    var pairedList by remember { mutableStateOf<List<BluetoothDevice>>(emptyList()) }
-    var selectedDevice by remember { mutableStateOf<BluetoothDevice?>(null) }
-    LaunchedEffect(step) { if (step == 3) pairedList = bondedDevices() }
-    Column(
-        Modifier.fillMaxSize().safeDrawingPadding().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        when (step) {
-            0 -> {
-                Text("HID Controller", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE8EAF0))
-                Text("Turn this phone into a wireless gamepad, mouse, or keyboard.", fontSize = 14.sp, color = Color(0xFFC7CDD8))
-                Button(onClick = { onStep(1) }, modifier = Modifier.height(52.dp)) { Text("Get started") }
-            }
-            1 -> {
-                Text("What do you want to control?", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE8EAF0))
-                Button(onClick = { onHostType(HostType.WINDOWS); onStep(2) }, modifier = Modifier.fillMaxWidth().height(84.dp)) {
-                    Text("🖥 Windows PC\nPlay PC games or control Windows with gamepad, mouse, or keyboard.")
-                }
-                Button(onClick = { onHostType(HostType.ANDROID); onStep(2) }, modifier = Modifier.fillMaxWidth().height(84.dp)) {
-                    Text("📱 Android phone or tablet\nPlay games or control a compatible Android device with Bluetooth HID.")
-                }
-                Text("Compatibility depends on the receiving device accepting Bluetooth HID input.", fontSize = 12.sp, color = Color(0xFF9AA1B2))
-            }
-            2 -> {
-                Text("How do you want to use it?", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE8EAF0))
-                Button(onClick = { onMode(ControllerMode.GAMEPAD); onStep(3) }, modifier = Modifier.fillMaxWidth().height(76.dp)) {
-                    Text("🎮 Gamepad\nButtons, sticks, triggers, pedals, and tilt. Best for games.")
-                }
-                Button(onClick = { onMode(ControllerMode.MOUSE); onStep(3) }, modifier = Modifier.fillMaxWidth().height(76.dp)) {
-                    Text("🖱 Mouse\nTouchpad, clicks, and scroll. Best for navigation.")
-                }
-                Button(onClick = { onMode(ControllerMode.KEYBOARD); onStep(3) }, modifier = Modifier.fillMaxWidth().height(76.dp)) {
-                    Text("⌨ Keyboard\nQWERTY typing, arrows, and shortcuts. Best for typing.")
-                }
-            }
-            3 -> {
-                Text(if (hostType == HostType.WINDOWS) "Pair with your Windows PC" else "Pair with your Android device", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE8EAF0))
-                Text(pairInstructions(hostType), fontSize = 13.sp, color = Color(0xFFC7CDD8))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onDiscoverable, modifier = Modifier.height(48.dp)) { Text("Make discoverable") }
-                    Button(onClick = { pairedList = bondedDevices() }, modifier = Modifier.height(48.dp)) { Text("Refresh paired devices") }
-                }
-                Text("Paired devices", fontSize = 14.sp, color = Color(0xFFE8EAF0))
-                if (pairedList.isEmpty()) Text("No paired devices found", fontSize = 12.sp, color = Color(0xFF9AA1B2))
-                for (d in pairedList) {
-                    Row(Modifier.fillMaxWidth().height(64.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(deviceLabel(d), color = Color(0xFFE8EAF0), modifier = Modifier.weight(1f))
-                        Button(onClick = { if (onConnect(d)) { selectedDevice = d; onStep(4) } }, modifier = Modifier.height(48.dp)) { Text("Connect") }
-                    }
-                }
-                Button(onClick = { onStep(4) }, modifier = Modifier.height(48.dp), enabled = selectedDevice != null) { Text("Continue") }
-            }
-            else -> {
-                Text("Ready", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE8EAF0))
-                Text("Connected to: ${selectedDevice?.let { deviceLabel(it) } ?: "not selected yet"}", fontSize = 14.sp, color = Color(0xFFC7CDD8))
-                Text("Mode: ${modeLabel(mode)}", fontSize = 14.sp, color = Color(0xFFC7CDD8))
-                Button(onClick = onFinish, modifier = Modifier.height(52.dp)) { Text("Start using ${modeLabel(mode)}") }
-            }
-        }
-    }
-}
 
 @Composable
 private fun SettingsPanel(
@@ -634,8 +565,16 @@ private fun SettingsPanel(
     onClearInputs: () -> Unit,
 ) {
     val profile = profileForHostType(hostType)
+    Box(Modifier.fillMaxSize().background(Color(0xFF1A1B21))) {
     Column(
-        Modifier.fillMaxSize().background(Color(0xFF1A1B21)).padding(16.dp).verticalScroll(rememberScrollState()),
+        // Capped and centred on a wide screen so the settings do not stretch across a
+        // tablet; a compact screen gets the whole width.
+        Modifier
+            .widthIn(max = 640.dp)
+            .fillMaxWidth()
+            .align(Alignment.TopCenter)
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -672,7 +611,7 @@ private fun SettingsPanel(
             Button(onClick = onChangeDevice, modifier = Modifier.height(48.dp)) { Text("Change device") }
             Button(onClick = onDiscoverable, modifier = Modifier.height(48.dp)) { Text("Make discoverable") }
         }
-        Button(onClick = onRunSetup, modifier = Modifier.height(48.dp)) { Text("Run setup again") }
+        Button(onClick = onRunSetup, modifier = Modifier.height(48.dp)) { Text("Getting started") }
         Text("Controls", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE8EAF0))
         Text("Mode: ${modeLabel(controllerMode)}", fontSize = 12.sp, color = Color(0xFFC7CDD8))
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -730,6 +669,7 @@ private fun SettingsPanel(
             Text("Android compatibility note: some Android phones do not support Bluetooth HID hosts.", fontSize = 12.sp, color = Color(0xFF9AA1B2))
         }
         Text("Phone haptics are phone-local press feedback, not host-controlled game rumble.", fontSize = 12.sp, color = Color(0xFF9AA1B2))
+    }
     }
 }
 
