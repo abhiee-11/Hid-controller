@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -817,6 +818,90 @@ private fun GamepadStagePreview() {
 }
 
 
+@Preview(name = "Settings list", widthDp = 800, heightDp = 360, showBackground = true, backgroundColor = 0xFF0F1115)
+@Composable
+private fun SettingsPanelPreview() {
+    SettingsPanel(
+        statusText = "Connected: Windows PC",
+        hostType = HostType.WINDOWS,
+        controllerMode = ControllerMode.GAMEPAD,
+        hapticsEnabled = true,
+        hapticsStrength = 1f,
+        tiltOn = false,
+        tiltSensitivity = 1f,
+        tiltDeadzone = 0.05f,
+        mouseSensitivity = 1f,
+        sensorDescription = "Accelerometer",
+        onClose = {},
+        onReconnect = {},
+        onChangeDevice = {},
+        onDiscoverable = {},
+        onRunSetup = {},
+        onReportProblem = {},
+        onMode = {},
+        onHostType = {},
+        registeredProfile = HidProfile.COMPOSITE,
+        onConfirmRepair = {},
+        hidEnabled = true,
+        onHidEnabledChange = {},
+        onHaptics = {},
+        onHapticsStrength = {},
+        onTilt = {},
+        onTiltSensitivity = {},
+        onTiltDeadzone = {},
+        onTiltZero = {},
+        onMouseSensitivity = {},
+        onClearInputs = {},
+        rgbConfig = RgbConfig(),
+        onRgb = {},
+    )
+}
+
+/** One tappable row on the Settings list: title, a one-line summary and a chevron. */
+@Composable
+private fun SettingsRow(title: String, summary: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 64.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(PadColors.surface)
+            .border(1.dp, PadColors.border, RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = PadColors.text)
+            Text(summary, fontSize = 12.sp, color = PadColors.secondary)
+        }
+        Text("\u203A", fontSize = 20.sp, color = PadColors.secondary)
+    }
+}
+
+/** A page header: a back arrow, the page title and the panel Close on the right. */
+@Composable
+private fun SettingsPageHeader(title: String, onBack: () -> Unit, onClose: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedButton(
+            onClick = onBack,
+            modifier = Modifier.height(48.dp),
+            shape = RoundedCornerShape(50),
+            border = BorderStroke(1.dp, PadColors.border),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = PadColors.text),
+            contentPadding = PaddingValues(horizontal = 14.dp),
+        ) { Text("\u2039", fontSize = 18.sp, fontWeight = FontWeight.Bold) }
+        Text(
+            title,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = PadColors.text,
+            modifier = Modifier.weight(1f).padding(start = 12.dp),
+        )
+        Button(onClick = onClose, modifier = Modifier.height(48.dp)) { Text("Close") }
+    }
+}
+
 @Composable
 private fun SettingsPanel(
     statusText: String,
@@ -865,152 +950,168 @@ private fun SettingsPanel(
             .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = PadColors.text, modifier = Modifier.weight(1f))
-            Button(onClick = onClose, modifier = Modifier.height(48.dp)) { Text("Close") }
-        }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "HID controller: ${if (hidEnabled) "ON" else "OFF"}",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = PadColors.text,
-                modifier = Modifier.weight(1f),
-            )
-            Switch(checked = hidEnabled, onCheckedChange = onHidEnabledChange)
-        }
-        // Reporting a problem sits directly under the master switch: it is the one action a
-        // user reaches for when something is not working, and it should not be buried at the
-        // bottom of a long sheet.
-        Button(
-            onClick = onReportProblem,
-            modifier = Modifier.fillMaxWidth().height(48.dp),
-        ) { Text("Report a problem") }
-        Text(
-            "Off releases every input, unregisters the HID device and removes the notification. " +
-                "Phone Bluetooth and other Bluetooth connections are unaffected.",
-            fontSize = 11.sp,
-            color = PadColors.secondary,
-        )
-        Text("Connection", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PadColors.text)
-        Text("Connected host: $statusText", fontSize = 12.sp, color = PadColors.secondary)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Button(onClick = onReconnect, modifier = Modifier.height(48.dp)) { Text("Reconnect") }
-            Button(onClick = onChangeDevice, modifier = Modifier.height(48.dp)) { Text("Change device") }
-            Button(onClick = onDiscoverable, modifier = Modifier.height(48.dp)) { Text("Make discoverable") }
-        }
-        Button(onClick = onRunSetup, modifier = Modifier.height(48.dp)) { Text("Getting started") }
-        Text("Controls", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PadColors.text)
-        Text("Mode: ${modeLabel(controllerMode)}", fontSize = 12.sp, color = PadColors.secondary)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (mode in ControllerMode.entries) {
-                Button(onClick = { onMode(mode) }, modifier = Modifier.height(48.dp)) { Text(modeLabel(mode)) }
+        // null = the Settings list; a value = that page is open. The panel owns this, so the
+        // rest of the screen needs no new parameter.
+        var section by remember { mutableStateOf<SettingsSection?>(null) }
+        val current = section
+        if (current == null) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Settings", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = PadColors.text, modifier = Modifier.weight(1f))
+                Button(onClick = onClose, modifier = Modifier.height(48.dp)) { Text("Close") }
             }
-        }
-        Text("Host type: ${hostTitle(hostType)}", fontSize = 12.sp, color = PadColors.secondary)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (type in HostType.entries) {
-                Button(onClick = { onHostType(type) }, modifier = Modifier.height(48.dp)) { Text(hostTitle(type)) }
+            // Reporting a problem sits at the top of the list: it is the one action a user
+            // reaches for when something is not working.
+            Button(
+                onClick = onReportProblem,
+                modifier = Modifier.fillMaxWidth().height(48.dp),
+            ) { Text("Report a problem") }
+            for (item in settingsSections) {
+                SettingsRow(item.title, item.summary, onClick = { section = item })
             }
-        }
-        Text("Decides what three-finger swipes send. Change it if the swipes do nothing.", fontSize = 11.sp, color = PadColors.secondary)
-        Text(
-            "It also picks the HID descriptor the host needs: Android gets ${profileLabel(HidProfile.COMPOSITE)}, " +
-                "Windows gets ${profileLabel(HidProfile.GAMEPAD_ONLY)}. Changing it needs a re-pair, because " +
-                "the host caches the descriptor at pairing time.",
-            fontSize = 11.sp,
-            color = PadColors.pending,
-        )
-        if (profileNeedsRepair(current = profile, registered = registeredProfile)) {
-            Text(
-                "Re-pair needed: the host is still using the ${profileLabel(registeredProfile)} " +
-                    "descriptor. Remove the phone on the host, tap Make discoverable here, " +
-                    "then add the phone on the host again.",
-                fontSize = 11.sp,
-                color = PadColors.faceB,
-            )
-            Button(onClick = onConfirmRepair, modifier = Modifier.height(48.dp)) {
-                Text("I've re-paired the host")
-            }
-        }
-        Button(onClick = { onHaptics(!hapticsEnabled) }, modifier = Modifier.height(48.dp)) {
-            Text(if (hapticsEnabled) "Haptics ON" else "Haptics OFF")
-        }
-        Text("Haptics strength · ${"%.2f".format(hapticsStrength)}", fontSize = 12.sp, color = PadColors.secondary)
-        Slider(value = hapticsStrength, onValueChange = onHapticsStrength, valueRange = 0.25f..1.5f, steps = 4, modifier = Modifier.width(220.dp))
-        Button(onClick = { onTilt(!tiltOn) }, modifier = Modifier.height(48.dp)) { Text(if (tiltOn) "Tilt ON" else "Tilt OFF") }
-        Text("Tilt sensitivity Ã—${"%.1f".format(tiltSensitivity)}", fontSize = 12.sp, color = PadColors.secondary)
-        Slider(value = tiltSensitivity, onValueChange = onTiltSensitivity, valueRange = 0.5f..2.0f, steps = 9, modifier = Modifier.width(220.dp))
-        Text("Tilt deadzone ${"%.2f".format(tiltDeadzone)}", fontSize = 12.sp, color = PadColors.secondary)
-        Slider(value = tiltDeadzone, onValueChange = onTiltDeadzone, valueRange = 0f..0.3f, steps = 15, modifier = Modifier.width(220.dp))
-        Text("Tilt owns left-stick X when on — touch stick controls Y only", fontSize = 11.sp, color = PadColors.secondary)
-        Button(onClick = onTiltZero, modifier = Modifier.height(48.dp)) { Text("Calibrate / zero") }
-        Text("Sensor: $sensorDescription", fontSize = 11.sp, color = PadColors.secondary)
-        Text("Pointer & scroll speed Ã—${"%.2f".format(mouseSensitivity)}", fontSize = 12.sp, color = PadColors.secondary)
-        Slider(value = mouseSensitivity, onValueChange = onMouseSensitivity, valueRange = 0.25f..2.0f, steps = 7, modifier = Modifier.width(220.dp))
-        Button(onClick = onClearInputs, modifier = Modifier.height(48.dp)) { Text("Clear all held inputs") }
-        Text("Information", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PadColors.text)
-        Text("HID status: $statusText", fontSize = 12.sp, color = PadColors.secondary)
-        Text("Help / pairing instructions", fontSize = 12.sp, color = PadColors.secondary)
-        Text(pairInstructions(hostType), fontSize = 12.sp, color = PadColors.secondary)
-        if (hostType == HostType.ANDROID) {
-            Text("Android compatibility note: some Android phones do not support Bluetooth HID hosts.", fontSize = 12.sp, color = PadColors.secondary)
-        }
-        Text("Phone haptics are phone-local press feedback, not host-controlled game rumble.", fontSize = 12.sp, color = PadColors.secondary)
-        // --- RGB backlight: a phone-only, purely visual effect ---
-        Text("RGB backlight", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PadColors.text)
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                "Backlight: ${if (rgbConfig.enabled) "ON" else "OFF"}",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = PadColors.text,
-                modifier = Modifier.weight(1f),
-            )
-            Switch(
-                checked = rgbConfig.enabled,
-                onCheckedChange = { enabled -> onRgb(rgbConfig.copy(enabled = enabled)) },
-            )
-        }
-        Text("Phone-local. Fn+L toggles; Fn+Up and Fn+Down set brightness; Fn+Left and Fn+Right step the effect.", fontSize = 11.sp, color = PadColors.secondary)
-        Text("Effect: ${rgbEffectLabel(rgbConfig.effect)}", fontSize = 12.sp, color = PadColors.secondary)
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (effect in RgbEffect.entries) {
-                PadPill(
-                    rgbEffectLabel(effect),
-                    accent = rgbConfig.effect == effect,
-                    onClick = { onRgb(rgbConfig.copy(effect = effect)) },
-                    modifier = Modifier.height(34.dp),
-                )
-            }
-        }
-        Text("Flow: ${rgbFlowLabel(rgbConfig.flow)}", fontSize = 12.sp, color = PadColors.secondary)
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            for (flow in RgbFlow.entries) {
-                Button(onClick = { onRgb(rgbConfig.copy(flow = flow)) }, modifier = Modifier.height(48.dp)) {
-                    Text(rgbFlowLabel(flow))
-                }
-            }
-        }
-        Text("Speed x${"%.2f".format(rgbConfig.speed)}", fontSize = 12.sp, color = PadColors.secondary)
-        Slider(value = rgbConfig.speed, onValueChange = { onRgb(rgbConfig.copy(speed = it)) }, valueRange = 0.25f..2f, steps = 6, modifier = Modifier.width(220.dp))
-        Text("Brightness ${"%.0f".format(rgbConfig.brightness * 100)}%", fontSize = 12.sp, color = PadColors.secondary)
-        Slider(value = rgbConfig.brightness, onValueChange = { onRgb(rgbConfig.copy(brightness = it)) }, valueRange = 0.1f..1f, steps = 8, modifier = Modifier.width(220.dp))
-        Text("Colour", fontSize = 12.sp, color = PadColors.secondary)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for ((index, preset) in RGB_PRESETS.withIndex()) {
-                Box(
-                    Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(Color.hsv(preset.hue, preset.sat, preset.value))
-                        .border(
-                            1.dp,
-                            if (rgbConfig.staticColor == index) PadColors.accent else PadColors.border,
-                            CircleShape,
+        } else {
+            SettingsPageHeader(title = current.title, onBack = { section = null }, onClose = onClose)
+            when (current) {
+                SettingsSection.CONNECTION -> {
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "HID controller: ${if (hidEnabled) "ON" else "OFF"}",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PadColors.text,
+                            modifier = Modifier.weight(1f),
                         )
-                        .clickable(onClick = { onRgb(rgbConfig.copy(staticColor = index)) }),
-                )
+                        Switch(checked = hidEnabled, onCheckedChange = onHidEnabledChange)
+                    }
+                    Text(
+                        "Off releases every input, unregisters the HID device and removes the notification. " +
+                            "Phone Bluetooth and other Bluetooth connections are unaffected.",
+                        fontSize = 11.sp,
+                        color = PadColors.secondary,
+                    )
+                    Text("Connected host: $statusText", fontSize = 12.sp, color = PadColors.secondary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Button(onClick = onReconnect, modifier = Modifier.height(48.dp)) { Text("Reconnect") }
+                        Button(onClick = onChangeDevice, modifier = Modifier.height(48.dp)) { Text("Change device") }
+                        Button(onClick = onDiscoverable, modifier = Modifier.height(48.dp)) { Text("Make discoverable") }
+                    }
+                    Button(onClick = onRunSetup, modifier = Modifier.height(48.dp)) { Text("Getting started") }
+                }
+                SettingsSection.CONTROLS -> {
+                    Text("Mode: ${modeLabel(controllerMode)}", fontSize = 12.sp, color = PadColors.secondary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (mode in ControllerMode.entries) {
+                            Button(onClick = { onMode(mode) }, modifier = Modifier.height(48.dp)) { Text(modeLabel(mode)) }
+                        }
+                    }
+                    Text("Host type: ${hostTitle(hostType)}", fontSize = 12.sp, color = PadColors.secondary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (type in HostType.entries) {
+                            Button(onClick = { onHostType(type) }, modifier = Modifier.height(48.dp)) { Text(hostTitle(type)) }
+                        }
+                    }
+                    Text("Decides what three-finger swipes send. Change it if the swipes do nothing.", fontSize = 11.sp, color = PadColors.secondary)
+                    Text(
+                        "It also picks the HID descriptor the host needs: Android gets ${profileLabel(HidProfile.COMPOSITE)}, " +
+                            "Windows gets ${profileLabel(HidProfile.GAMEPAD_ONLY)}. Changing it needs a re-pair, because " +
+                            "the host caches the descriptor at pairing time.",
+                        fontSize = 11.sp,
+                        color = PadColors.pending,
+                    )
+                    if (profileNeedsRepair(current = profile, registered = registeredProfile)) {
+                        Text(
+                            "Re-pair needed: the host is still using the ${profileLabel(registeredProfile)} " +
+                                "descriptor. Remove the phone on the host, tap Make discoverable here, " +
+                                "then add the phone on the host again.",
+                            fontSize = 11.sp,
+                            color = PadColors.faceB,
+                        )
+                        Button(onClick = onConfirmRepair, modifier = Modifier.height(48.dp)) {
+                            Text("I've re-paired the host")
+                        }
+                    }
+                    Button(onClick = { onHaptics(!hapticsEnabled) }, modifier = Modifier.height(48.dp)) {
+                        Text(if (hapticsEnabled) "Haptics ON" else "Haptics OFF")
+                    }
+                    Text("Haptics strength · ${"%.2f".format(hapticsStrength)}", fontSize = 12.sp, color = PadColors.secondary)
+                    Slider(value = hapticsStrength, onValueChange = onHapticsStrength, valueRange = 0.25f..1.5f, steps = 4, modifier = Modifier.width(220.dp))
+                    Button(onClick = { onTilt(!tiltOn) }, modifier = Modifier.height(48.dp)) { Text(if (tiltOn) "Tilt ON" else "Tilt OFF") }
+                    Text("Tilt sensitivity Ã—${"%.1f".format(tiltSensitivity)}", fontSize = 12.sp, color = PadColors.secondary)
+                    Slider(value = tiltSensitivity, onValueChange = onTiltSensitivity, valueRange = 0.5f..2.0f, steps = 9, modifier = Modifier.width(220.dp))
+                    Text("Tilt deadzone ${"%.2f".format(tiltDeadzone)}", fontSize = 12.sp, color = PadColors.secondary)
+                    Slider(value = tiltDeadzone, onValueChange = onTiltDeadzone, valueRange = 0f..0.3f, steps = 15, modifier = Modifier.width(220.dp))
+                    Text("Tilt owns left-stick X when on — touch stick controls Y only", fontSize = 11.sp, color = PadColors.secondary)
+                    Button(onClick = onTiltZero, modifier = Modifier.height(48.dp)) { Text("Calibrate / zero") }
+                    Text("Sensor: $sensorDescription", fontSize = 11.sp, color = PadColors.secondary)
+                    Text("Pointer & scroll speed Ã—${"%.2f".format(mouseSensitivity)}", fontSize = 12.sp, color = PadColors.secondary)
+                    Slider(value = mouseSensitivity, onValueChange = onMouseSensitivity, valueRange = 0.25f..2.0f, steps = 7, modifier = Modifier.width(220.dp))
+                    Button(onClick = onClearInputs, modifier = Modifier.height(48.dp)) { Text("Clear all held inputs") }
+                }
+                SettingsSection.INFORMATION -> {
+                    Text("HID status: $statusText", fontSize = 12.sp, color = PadColors.secondary)
+                    Text("Help / pairing instructions", fontSize = 12.sp, color = PadColors.secondary)
+                    Text(pairInstructions(hostType), fontSize = 12.sp, color = PadColors.secondary)
+                    if (hostType == HostType.ANDROID) {
+                        Text("Android compatibility note: some Android phones do not support Bluetooth HID hosts.", fontSize = 12.sp, color = PadColors.secondary)
+                    }
+                    Text("Phone haptics are phone-local press feedback, not host-controlled game rumble.", fontSize = 12.sp, color = PadColors.secondary)
+                }
+                SettingsSection.RGB -> {
+                    // --- RGB backlight: a phone-only, purely visual effect ---
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Backlight: ${if (rgbConfig.enabled) "ON" else "OFF"}",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PadColors.text,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(
+                            checked = rgbConfig.enabled,
+                            onCheckedChange = { enabled -> onRgb(rgbConfig.copy(enabled = enabled)) },
+                        )
+                    }
+                    Text("Phone-local. Fn+L toggles; Fn+Up and Fn+Down set brightness; Fn+Left and Fn+Right step the effect.", fontSize = 11.sp, color = PadColors.secondary)
+                    Text("Effect: ${rgbEffectLabel(rgbConfig.effect)}", fontSize = 12.sp, color = PadColors.secondary)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (effect in RgbEffect.entries) {
+                            PadPill(
+                                rgbEffectLabel(effect),
+                                accent = rgbConfig.effect == effect,
+                                onClick = { onRgb(rgbConfig.copy(effect = effect)) },
+                                modifier = Modifier.height(34.dp),
+                            )
+                        }
+                    }
+                    Text("Flow: ${rgbFlowLabel(rgbConfig.flow)}", fontSize = 12.sp, color = PadColors.secondary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (flow in RgbFlow.entries) {
+                            Button(onClick = { onRgb(rgbConfig.copy(flow = flow)) }, modifier = Modifier.height(48.dp)) {
+                                Text(rgbFlowLabel(flow))
+                            }
+                        }
+                    }
+                    Text("Speed x${"%.2f".format(rgbConfig.speed)}", fontSize = 12.sp, color = PadColors.secondary)
+                    Slider(value = rgbConfig.speed, onValueChange = { onRgb(rgbConfig.copy(speed = it)) }, valueRange = 0.25f..2f, steps = 6, modifier = Modifier.width(220.dp))
+                    Text("Brightness ${"%.0f".format(rgbConfig.brightness * 100)}%", fontSize = 12.sp, color = PadColors.secondary)
+                    Slider(value = rgbConfig.brightness, onValueChange = { onRgb(rgbConfig.copy(brightness = it)) }, valueRange = 0.1f..1f, steps = 8, modifier = Modifier.width(220.dp))
+                    Text("Colour", fontSize = 12.sp, color = PadColors.secondary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for ((index, preset) in RGB_PRESETS.withIndex()) {
+                            Box(
+                                Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.hsv(preset.hue, preset.sat, preset.value))
+                                    .border(
+                                        1.dp,
+                                        if (rgbConfig.staticColor == index) PadColors.accent else PadColors.border,
+                                        CircleShape,
+                                    )
+                                    .clickable(onClick = { onRgb(rgbConfig.copy(staticColor = index)) }),
+                            )
+                        }
+                    }
+                }
             }
         }
     }
