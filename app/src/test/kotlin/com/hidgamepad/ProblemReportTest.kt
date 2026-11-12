@@ -147,29 +147,76 @@ class ProblemReportTest {
 
     @Test
     fun `preflight refuses an invalid topic before any network call`() {
-        assertTrue(reportPreflightFailure(topic = "not a topic", body = "boom") != null)
+        assertTrue(reportPreflightFailure(topic = "not a topic", description = "boom") != null)
     }
 
     @Test
     fun `preflight refuses a blank description`() {
-        assertTrue(reportPreflightFailure(topic = "abc", body = "   ") != null)
+        assertTrue(reportPreflightFailure(topic = "abc", description = "   ") != null)
     }
 
     @Test
     fun `preflight passes a valid report`() {
-        assertNull(reportPreflightFailure(topic = "abc", body = "boom"))
+        assertNull(reportPreflightFailure(topic = "abc", description = "boom"))
+    }
+
+    @Test
+    fun `the hid state word never carries the host name`() {
+        // The report goes to a public server: the *other* device's Bluetooth name, and its
+        // MAC address when it has no friendly name, must never be in it.
+        val word = hidStateWord(HidGamepadManager.Status.Connected("ABHISKAR"))
+        assertEquals("connected", word)
+        assertFalse(word.contains("ABHISKAR"))
+        assertFalse(
+            hidStateWord(HidGamepadManager.Status.Connecting("My Lenovo Tab")).contains("Lenovo")
+        )
+        assertEquals("registered", hidStateWord(HidGamepadManager.Status.Registered))
+        assertEquals("not registered", hidStateWord(HidGamepadManager.Status.Unregistered))
+        assertEquals("bluetooth off", hidStateWord(HidGamepadManager.Status.BluetoothOff))
+        assertEquals("unsupported", hidStateWord(HidGamepadManager.Status.Unsupported))
+        assertEquals(
+            "connection failed",
+            hidStateWord(HidGamepadManager.Status.ConnectFailed("Host")),
+        )
+        assertEquals(
+            "connection timed out",
+            hidStateWord(HidGamepadManager.Status.ConnectTimedOut("Host")),
+        )
+    }
+
+    @Test
+    fun `an invalid build topic falls back to asking the user`() {
+        // A typo in local.properties must not lock the feature: an unusable build topic is
+        // ignored so the panel shows the topic field.
+        assertEquals("stored", resolveReportTopic(buildTopic = "not a topic", storedTopic = "stored"))
+        assertNull(resolveReportTopic(buildTopic = "not a topic", storedTopic = "also bad"))
+        assertNull(resolveReportTopic(buildTopic = "", storedTopic = ""))
+    }
+
+    @Test
+    fun `a blank description is refused even when there are details to send`() = runBlocking {
+        // The real data flow: the details are always present, so a blank body would still
+        // look non-blank. The check has to be on the description itself.
+        val outcome = ProblemReporter.send(
+            topic = "abc",
+            title = REPORT_TITLE,
+            description = "   ",
+            details = "Screen\n  Window        858 x 384 dp (landscape)",
+        )
+        assertTrue(outcome is ReportOutcome.Failed)
+        assertEquals("Describe the problem first.", (outcome as ReportOutcome.Failed).reason)
     }
 
     @Test
     fun `an invalid topic is refused without a network call`() = runBlocking {
-        val outcome = ProblemReporter.send(topic = "not a topic", title = REPORT_TITLE, body = "boom")
+        val outcome = ProblemReporter.send(topic = "not a topic", title = REPORT_TITLE, description = "boom", details = null)
         assertTrue(outcome is ReportOutcome.Failed)
         assertEquals("The topic name is not valid.", (outcome as ReportOutcome.Failed).reason)
     }
 
     @Test
     fun `a blank description is refused without a network call`() = runBlocking {
-        val outcome = ProblemReporter.send(topic = "abc", title = REPORT_TITLE, body = "   ")
+        val outcome = ProblemReporter.send(topic = "abc", title = REPORT_TITLE, description = "   ", details = null)
         assertTrue(outcome is ReportOutcome.Failed)
         assertEquals("Describe the problem first.", (outcome as ReportOutcome.Failed).reason)
     }
@@ -220,7 +267,7 @@ class ProblemReportTest {
         assertTrue(block.contains("Corners       none"))
         assertTrue(block.contains("light"))
         assertTrue(block.contains("Pixel 8"))
-        assertTrue(block.contains("Android device"))
+        assertTrue(block.contains("Android phone or tablet"))
         assertTrue(block.contains("Tilt           on"))
         assertTrue(block.contains("Width class   compact"))
     }

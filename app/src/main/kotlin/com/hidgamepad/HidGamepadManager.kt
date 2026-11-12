@@ -51,6 +51,25 @@ fun shouldRunHidService(enabled: Boolean, permissionsGranted: Boolean): Boolean 
 fun shouldSelfHealProxy(stopped: Boolean, bluetoothEnabled: Boolean): Boolean =
     !stopped && bluetoothEnabled
 
+/**
+ * The HID state as a plain word, with no device name in it.
+ *
+ * The status *line* names the host — that is right on screen, where the user is looking at
+ * their own device. It is wrong in a report: a report travels to a public server, and the
+ * host's Bluetooth name (or its MAC address, when it has no friendly name) identifies
+ * somebody else's device.
+ */
+fun hidStateWord(status: HidGamepadManager.Status): String = when (status) {
+    is HidGamepadManager.Status.Unsupported -> "unsupported"
+    is HidGamepadManager.Status.BluetoothOff -> "bluetooth off"
+    is HidGamepadManager.Status.Unregistered -> "not registered"
+    is HidGamepadManager.Status.Registered -> "registered"
+    is HidGamepadManager.Status.Connecting -> "connecting"
+    is HidGamepadManager.Status.Connected -> "connected"
+    is HidGamepadManager.Status.ConnectFailed -> "connection failed"
+    is HidGamepadManager.Status.ConnectTimedOut -> "connection timed out"
+}
+
 /** Bluetooth HID DEVICE profile wrapper: app registration, host connection lifecycle and
  *  report sending (change-triggered + 100 ms heartbeat while connected). All Bluetooth calls
  *  assume the runtime permissions have been granted — MainActivity gates that. */

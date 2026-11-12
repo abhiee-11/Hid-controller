@@ -104,16 +104,17 @@ side with the illustration on the left; below that they stack. The content colum
 
 ### Orientation and adaptation
 
-- The manifest drops `screenOrientation="landscape"` and absorbs every configuration change
-  (`orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection`).
+- The app **stays locked to landscape** — it is a one-hand controller. (An earlier draft unlocked
+  the activity; the human partner asked for the lock back, so it stays.)
+- What the manifest *does* change is the configuration handling: it now absorbs **every**
+  configuration change (`orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection`).
   **This matters beyond tidiness:** recreating the activity on a layout change would release
-  every held input and re-register the HID device mid-game.
-- The gamepad screen requests landscape while it is shown and gives the orientation back when
-  it is left. If the window is portrait anyway — Android 16 ignores orientation requests on
-  large screens — the gamepad shows a "rotate your phone" prompt instead of a squeezed
-  controller.
+  every held input (onPause) and re-register the HID device mid-game.
 - The Settings sheet, the tutorial and the report panel all cap their content column at
   640 dp and centre it on wide screens.
+- All three surfaces respect the display cutout and system gesture areas with
+  `safeDrawingPadding()`; the tutorial and the report panel also consume the touches that
+  reach them, so the controller underneath cannot receive a stray tap.
 - The tutorial and the report panel scroll, so a short window never clips content.
 
 ## What does not change
@@ -128,9 +129,8 @@ notification, connection management, the heartbeat, the re-pair rule, and the pe
 |---|---|
 | `app/src/main/kotlin/com/hidgamepad/Tutorial.kt` *(new)* | The step model and its transitions — pure, unit-tested. |
 | `app/src/main/kotlin/com/hidgamepad/TutorialPanel.kt` *(new)* | The redesigned tutorial screen. |
-| `app/src/main/kotlin/com/hidgamepad/GamepadScreen.kt` | Use the new tutorial panel; add the landscape request to the gamepad; the Settings entry becomes "Getting started". |
-| `app/src/main/kotlin/com/hidgamepad/Joystick.kt` | The gamepad's portrait fallback prompt. |
-| `app/src/main/AndroidManifest.xml` | Drop the orientation lock; absorb every configuration change. |
+| `app/src/main/kotlin/com/hidgamepad/GamepadScreen.kt` | Use the new tutorial panel; the Settings entry becomes "Getting started"; the Settings sheet gets the width cap and the insets. |
+| `app/src/main/AndroidManifest.xml` | Absorb every configuration change; the orientation lock stays. |
 | `app/src/test/kotlin/com/hidgamepad/TutorialTest.kt` *(new)* | The step transitions. |
 
 ## Verification

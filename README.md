@@ -147,16 +147,17 @@ Device
 
 App
   HID Controller 1.1
-  Screen         Mouse
-  Mode           Mouse
-  Host type      Android device
-  HID            Connected: ABHISKAR
+  Screen         Settings
+  Mode           Gamepad
+  Host type      Windows PC
+  HID            registered
   Tilt           off
 ```
 
 Those details are attached to every report automatically and are never shown to the person
 reporting — they are there so the report is actionable without anyone having to describe
-their own screen. **No Bluetooth addresses and no paired-device names are included.**
+their own screen. **No Bluetooth addresses, no paired-device names and no host names are
+included** — the HID state is reported as a plain word (`registered`, `connected`, …).
 
 The delivery topic is the maintainer's own and is compiled into the app from a
 machine-local, git-ignored property, so it never enters the repository. A build without that

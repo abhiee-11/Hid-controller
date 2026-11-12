@@ -14,6 +14,16 @@ val localProperties = Properties().apply {
     if (file.exists()) file.inputStream().use { load(it) }
 }
 
+// It is validated here as well as at runtime: a typo must fail the build with a clear
+// message rather than producing an app whose only way out is a field the user cannot see.
+val ntfyTopic = localProperties.getProperty("ntfy.topic", "").trim()
+if (ntfyTopic.isNotEmpty() && !Regex("^[A-Za-z0-9_-]{1,64}$").matches(ntfyTopic)) {
+    throw GradleException(
+        "local.properties: ntfy.topic must match [A-Za-z0-9_-]{1,64} (letters, digits, " +
+            "hyphen and underscore). Got \"$ntfyTopic\".",
+    )
+}
+
 android {
     namespace = "com.hidgamepad"
     compileSdk = 37
@@ -28,7 +38,7 @@ android {
         buildConfigField(
             "String",
             "NTFY_TOPIC",
-            "\"${localProperties.getProperty("ntfy.topic", "").replace("\"", "")}\"",
+            "\"$ntfyTopic\"",
         )
     }
 
