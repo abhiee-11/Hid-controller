@@ -1,5 +1,9 @@
 package com.hidgamepad
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -11,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.nativeCanvas
@@ -581,13 +586,17 @@ fun KeyboardKeyButton(
     backlight: Color? = null,
 ) {
     var pressed by remember { mutableStateOf(false) }
+    val travel by animateFloatAsState(
+        targetValue = if (pressed) 1f else 0f,
+        animationSpec = if (pressed) tween(40) else spring(dampingRatio = 0.55f, stiffness = Spring.StiffnessHigh),
+        label = "keyTravel",
+    )
     val context = LocalContext.current
     val onDownNow by rememberUpdatedState(onDown)
     val onUpNow by rememberUpdatedState(onUp)
     val hapticNow by rememberUpdatedState(hapticsEnabled)
     val strengthNow by rememberUpdatedState(hapticsStrength)
-    // Pressed keys sink into the deck instead of shrinking.
-    val sink = if (pressed) 2.dp else 0.dp
+    val depth = 5.dp
     // Splitting the key out of the single display list: without a layer per key, any key
     // invalidation re-records the whole keyboard (and usually the whole window) every frame.
     Box(
@@ -618,33 +627,42 @@ fun KeyboardKeyButton(
                     }
                 },
         ) {
-            val sinkPx = sink.toPx()
+            val depthPx = depth.toPx()
+            val dy = travel * depthPx
+            val capH = size.height - depthPx
             val corner = CornerRadius(8f.dp.toPx(), 8f.dp.toPx())
+            // Dark base (the side of the keycap visible beneath the travelling cap).
+            drawRoundRect(
+                Color(0xFF0B0C10),
+                topLeft = Offset(0f, depthPx),
+                size = Size(size.width, capH),
+                cornerRadius = corner,
+            )
             // Keycap: always #14161C with a 1dp #04050A border. No coloured outline, ever.
             drawRoundRect(
                 KEYCAP_COLOR,
-                topLeft = Offset(0f, sinkPx),
-                size = Size(size.width, size.height),
+                topLeft = Offset(0f, dy),
+                size = Size(size.width, capH),
                 cornerRadius = corner,
             )
             drawRoundRect(
                 KEYCAP_BORDER_COLOR,
-                topLeft = Offset(0.5f, 0.5f + sinkPx),
-                size = Size(size.width - 1f, size.height - 1f),
+                topLeft = Offset(0.5f, 0.5f + dy),
+                size = Size(size.width - 1f, capH - 1f),
                 cornerRadius = corner,
                 style = Stroke(width = 1f.dp.toPx()),
             )
             // Faint top highlight, white at 5% alpha along the top inside edge.
             drawLine(
                 Color.White.copy(alpha = 0.05f),
-                start = Offset(4f, 2.5f + sinkPx),
-                end = Offset(size.width - 4f, 2.5f + sinkPx),
+                start = Offset(4f, dy + 1.dp.toPx()),
+                end = Offset(size.width - 4f, dy + 1.dp.toPx()),
                 strokeWidth = 1f.dp.toPx(),
             )
             if (indicator) {
                 // The caps-lock LED: green with a glow when on, dim slate when off.
                 val r = 3.5f.dp.toPx()
-                val dot = Offset(size.width - r - 3f.dp.toPx(), r + 3f.dp.toPx() + sinkPx)
+                val dot = Offset(size.width - r - 3f.dp.toPx(), dy + 8.dp.toPx())
                 if (indicatorOn) {
                     drawCircle(PadColors.connected.copy(alpha = 0.35f), radius = r * 2.3f, center = dot)
                     drawCircle(PadColors.connected, radius = r, center = dot)
@@ -673,7 +691,7 @@ fun KeyboardKeyButton(
             } else {
                 TextStyle.Default
             },
-            modifier = if (pressed) Modifier.offset(y = 2.dp) else Modifier,
+            modifier = Modifier.offset { IntOffset(0, (travel * depth.toPx()).toInt()) },
         )
     }
 }
