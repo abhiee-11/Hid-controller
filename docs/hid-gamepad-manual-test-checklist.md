@@ -33,14 +33,17 @@ pairing it again.** A profile change without a re-pair has no effect on the host
 | Profile | What it registers | Use it for |
 |---|---|---|
 | Keyboard + mouse + gamepad | the 4-in-1 composite descriptor | the Android tablet; mouse + keyboard + gamepad over one link |
-| Gamepad only | a dedicated gamepad, W3C standard layout | PC games and browser games — a host will not recognise a composite device as a gamepad |
+| Gamepad only | a dedicated gamepad, W3C standard layout | **not recommended as-is** — measured worse than composite on the tablet's Chrome: X and R1 are dead (see the results table) |
 
 | Profile | Action | Expected | Result |
 |---|---|---|---|
-| Gamepad only | Chrome: open a page that reads `navigator.getGamepads()` | one pad, 16 buttons, **6** axes | unverified — the composite measures 10 axes; the 6-axis gamepad-only target has not been re-paired yet |
-| Gamepad only | Press A on the phone | the host sees one button press | needs a PC re-pair |
-| Gamepad only | Move the right stick | the right stick moves on the host | needs a PC re-pair |
+| Gamepad only | Chrome **on the tablet**: open a page that reads `navigator.getGamepads()` | one pad, 17 buttons, **6** axes | FAIL (2026-11-12): pad appears but `mapping: ""` and the index map is broken — A→0, B→1, Y→2, L1→3, SEL→6, START→7; **X and R1 produce no index at all** |
+| Gamepad only | Press A on the phone | the host sees one button press | PASS (2026-11-12): browser button index 0 |
+| Gamepad only | Move the right stick | the right stick moves on the host | PASS (2026-11-12): right stick → `axes[2]/axes[3]` |
+| Gamepad only | Press L2 / R2 on the phone | the host sees a trigger axis move | PASS (2026-11-12): L2 → `axes[4]`, R2 → `axes[5]` (rest `-1`, rises with the press) |
 | Composite | Re-pair the tablet | the tablet lists the phone as a gamepad | PASS (2026-11-11): `event8` "vivo Y29" with the full button/axis set |
+| Composite | Chrome **on the tablet**: open a page that reads `navigator.getGamepads()` | after one real tap, one pad, 17 buttons, 7 axes | PASS (2026-11-12): `mapping: ""`, near-W3C indices (A→0 … d-pad 12–15) |
+| Composite | Press A / move the left stick in the tablet's Chrome | button index 0 / axis 0 moves | PASS (2026-11-12) |
 | Composite | Press every on-screen control | the tablet reports the expected keycode | PASS (2026-11-11): see the "Analog outputs" list above, plus d-pad → `ABS_HAT0X/Y` |
 | Composite | Press MODE on the phone | the tablet reports `BUTTON_MODE` (316) | N/A — the gamepad screen has no MODE button |
 

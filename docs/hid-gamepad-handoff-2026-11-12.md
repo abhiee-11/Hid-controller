@@ -39,6 +39,35 @@ BTN_TL BTN_TR BTN_TL2 BTN_TR2 BTN_SELECT BTN_START BTN_MODE BTN_THUMBL BTN_THUMB
 | Right stick | `ABS_Z` + `ABS_RZ` |
 | L2 / R2 | `ABS_BRAKE 255` / `ABS_GAS 255`, both return to 0 on release |
 
+## Verified in the tablet's browser (composite profile, Chrome 157)
+
+Chrome 157 on the tablet (`<TABLET_SERIAL>`) **does** expose the phone to web pages.
+
+- The Gamepad API is gated behind a **real user gesture**. Before a genuine tap,
+  `navigator.getGamepads()` returns 8 null slots (`count: 8, pads: []`). An `adb`-injected
+  tap satisfies the gate; once it fires, `gamepadconnected` fires and the pad stays live.
+- `gamepadconnected` payload: `id: "Abhiskar's vivo Y29 Keyboard (Vendor: 001d Product: 0000)"`,
+  **`mapping: ""`**, `axes: 7`, `buttons: 17`.
+- Unlike the PC, the tablet's browser maps the composite pad to a **near-W3C layout**
+  (measured control-by-control, not inferred):
+
+| Phone control | button index | axis |
+|---|---|---|
+| A / B / X / Y | 0 / 1 / 2 / 3 | |
+| L1 / R1 | 4 / 5 | |
+| L2 / R2 | 6 / 7 | 4 / 5 |
+| SELECT / START | 8 / 9 | |
+| D-pad N / S / W / E | 12 / 13 / 14 / 15 | |
+| Left stick | | 0 (X), 1 (Y) |
+| Right stick | | 2 (X), 3 (Y) |
+
+- `mapping` is still `""`, so a game that hard-requires `mapping === "standard"` ignores the
+  pad; games that read indices directly work.
+- Recipe: `adb reverse tcp:8099 tcp:8099`, serve `gp-probe.html` on `127.0.0.1:8099`, open it
+  in the tablet's Chrome, tap once, then read `gp-capture.txt`. The Android Chrome DevTools
+  socket answers only on the **browser** endpoint with flattened `Target.attachToTarget`
+  sessions; per-page sockets and session-scoped commands time out (see `cdp2.mjs`).
+
 ## Verified on the PC (composite profile, Chrome)
 
 - Re-pair took effect: single `Bluetooth HID Device` node, no COL01–COL04 siblings;
@@ -55,16 +84,48 @@ BTN_TL BTN_TR BTN_TL2 BTN_TR2 BTN_SELECT BTN_START BTN_MODE BTN_THUMBL BTN_THUMB
 
 ## Open items, in priority order
 
-1. **GAMEPAD_ONLY is still not host-verified.** It was only seen by Chrome *before* the PC
-   re-pair. To get a pad with `mapping: "standard"`, set the phone to **Gamepad only**, then
-   re-pair the PC again, then re-read `navigator.getGamepads()`.
-2. **Latent mismatch in GAMEPAD_ONLY on Android/Linux hosts.** `w3cWireBit` in
-   `GamepadProfiles.kt` maps canonical → W3C order (X→wire 2, Y→wire 3, L1→4, R1→5,
-   SEL→8, START→9). Browsers index the report positionally, so this is right for a browser,
-   but the Linux/Android kernel maps the same positions to `BTN_C`, `BTN_NORTH`, `BTN_WEST`,
-   `BTN_Z`, `BTN_TL2`, `BTN_TR2` — i.e. wrong for an Android host. Either restrict
-   GAMEPAD_ONLY to browser/DirectInput hosts in the UI, or emit the canonical order and rely
-   on the browser heuristic. Not decided.
+1. **GAMEPAD_ONLY is host-verified (tablet browser) and it is worse than COMPOSITE.** After a
+   real re-pair (both bonds removed, re-paired from the tablet), Chrome 157 on the Lenovo Tab M11
+   fired `gamepadconnected` with `id: "Abhiskar's vivo Y29 (Vendor: 001d Product: 0000)"`
+   (no "Keyboard" suffix), `mapping: ""`, `axes: 6`, `buttons: 17`. It does **not** produce
+   `mapping: "standard"`. The button index map is broken (measured, one control at a time):
+
+   | Control | Phone wire bit | Browser button index |
+   |---------|----------------|----------------------|
+   | A       | 0              | 0                    |
+   | B       | 1              | 1                    |
+   | X       | 2              | *(none — dead)*      |
+   | Y       | 3              | 2                    |
+   | L1      | 4              | 3                    |
+   | R1      | 5              | *(none — dead)*      |
+   | SEL     | 8              | 6                    |
+   | START   | 9              | 7                    |
+
+   X and R1 are dead: 12/12 snapshots while held showed no button index at all. The sticks and
+   triggers do work: left stick → `axes[0]/[1]`, right stick → `axes[2]/[3]`, L2 → `axes[4]`,
+   R2 → `axes[5]` (triggers rest at `-1` and rise with the press — Chrome normalises the
+   descriptor's unsigned 0..255 range to −1..+1, so a half press reads ≈0). So on this Android
+   host GAMEPAD_ONLY loses X and R1 versus COMPOSITE and gains nothing.
+
+   **Root cause (confirmed):** the Android kernel's `hid-input` maps the 16 HID Button usages of
+   a Gamepad collection positionally to Linux keycodes `BTN_A, BTN_B, BTN_C, BTN_X, BTN_Y,
+   BTN_Z, BTN_TL, BTN_TR, BTN_TL2, BTN_TR2, BTN_SELECT, BTN_START, …`. Chrome on Android then
+   builds its button list from those keycodes and has no entry for `BTN_C` or `BTN_Z`. So wire
+   bit 2 (Button 3) becomes `BTN_C` and wire bit 5 (Button 6) becomes `BTN_Z`, and both vanish.
+   This is exactly the `BTN_C`/`BTN_Z` gap predicted in #2. `w3cWireBit`'s W3C reordering
+   (X→bit 2, R1→bit 5) is what pushes the buttons onto those two slots, which is why COMPOSITE —
+   which emits Android's positional order — maps cleanly and GAMEPAD_ONLY does not.
+
+   Recommendation: keep COMPOSITE as the default; treat GAMEPAD_ONLY as experimental. If it is
+   kept, emit Android's positional order (drop the `w3cWireBit` reordering) so X/R1 land on
+   `BTN_X`/`BTN_TL` instead of `BTN_C`/`BTN_Z`.
+2. **The GAMEPAD_ONLY mismatch is confirmed on an Android/Chrome host — see the root cause in
+   #1.** `w3cWireBit` in `GamepadProfiles.kt` reorders the buttons to W3C order (X→wire 2,
+   Y→wire 3, L1→4, R1→5, SEL→8, START→9), but the Android kernel maps report bit position to
+   Linux keycodes in positional order, so wire bit 2 = `BTN_C` and wire bit 5 = `BTN_Z`, which
+   Chrome ignores. The fix, if GAMEPAD_ONLY is kept, is to emit Android's positional order for
+   that profile too (the reordering helps no Android host and only half-helps a browser, since
+   `mapping` stays `""` either way). Not decided — see #1's recommendation.
 3. **MODE / L3 / R3 have no on-screen control**, so they cannot be pressed on any host.
    Their bits (12/13/14) are unit-test-only. Either add controls or accept the gap.
 4. **Windows games still need XInput** (VID `045E`), which a Bluetooth HID pad can never be.
