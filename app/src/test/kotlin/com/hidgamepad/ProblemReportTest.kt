@@ -173,4 +173,53 @@ class ProblemReportTest {
         assertTrue(outcome is ReportOutcome.Failed)
         assertEquals("Describe the problem first.", (outcome as ReportOutcome.Failed).reason)
     }
+
+    @Test
+    fun `the details block names the screen the user was on`() {
+        val info = DeviceScreenInfo(
+            windowWidthDp = 857, windowHeightDp = 384, orientation = "landscape",
+            displayWidthPx = 720, displayHeightPx = 1608, densityDpi = 300, densityScale = "1.875",
+            smallestWidthDp = 360, refreshRateHz = "60", hasCutout = true, cutoutTopPx = 67,
+            cornerRadiusPx = 47, theme = "dark", manufacturer = "vivo", model = "V2434",
+            androidRelease = "16", sdkInt = 36, appVersion = "1.1",
+        )
+        val block = info.toDetailsBlock(
+            screenLabel = "Gamepad",
+            mode = ControllerMode.GAMEPAD,
+            hostType = HostType.WINDOWS,
+            hidStatus = "Registered",
+            tiltOn = false,
+        )
+        assertTrue(block.contains("857 x 384 dp (landscape)"))
+        assertTrue(block.contains("720 x 1608 px, 300 dpi (1.875x)"))
+        assertTrue(block.contains("360 dp"))
+        assertTrue(block.contains("60 Hz"))
+        assertTrue(block.contains("yes"))
+        assertTrue(block.contains("67 px top inset"))
+        assertTrue(block.contains("47 px radius"))
+        assertTrue(block.contains("dark"))
+        assertTrue(block.contains("vivo V2434"))
+        assertTrue(block.contains("Android 16 (SDK 36)"))
+        assertTrue(block.contains("HID Controller 1.1"))
+        assertTrue(block.contains("Windows PC"))
+        assertTrue(block.contains("Registered"))
+    }
+
+    @Test
+    fun `a device without a cutout says so`() {
+        val info = DeviceScreenInfo(
+            windowWidthDp = 411, windowHeightDp = 731, orientation = "portrait",
+            displayWidthPx = 1080, displayHeightPx = 2400, densityDpi = 420, densityScale = "2.625",
+            smallestWidthDp = 393, refreshRateHz = "60", hasCutout = false, cutoutTopPx = 0,
+            cornerRadiusPx = 0, theme = "light", manufacturer = "Google", model = "Pixel 8",
+            androidRelease = "15", sdkInt = 35, appVersion = "1.1",
+        )
+        val block = info.toDetailsBlock("Keyboard", ControllerMode.KEYBOARD, HostType.ANDROID, "Off", true)
+        assertTrue(block.contains("Cutout        no"))
+        assertTrue(block.contains("Corners       none"))
+        assertTrue(block.contains("light"))
+        assertTrue(block.contains("Pixel 8"))
+        assertTrue(block.contains("Android device"))
+        assertTrue(block.contains("Tilt           on"))
+    }
 }

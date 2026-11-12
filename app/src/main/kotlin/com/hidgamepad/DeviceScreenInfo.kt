@@ -1,0 +1,144 @@
+package com.hidgamepad
+
+import android.app.Activity
+import android.content.res.Configuration
+import android.os.Build
+import java.util.Locale
+
+/**
+ * The device and screen facts that make a bug report actionable.
+ *
+ * A report that says only "the gamepad does nothing" cannot be acted on. The window size in
+ * dp, the display density, whether the screen has a cutout and which screen the user was on
+ * are what turn it into something a maintainer can reproduce or dismiss.
+ *
+ * Deliberately **not** collected: Bluetooth addresses and bonded-device names. They identify
+ * other people's devices and have no business on a public server.
+ */
+data class DeviceScreenInfo(
+    val windowWidthDp: Int,
+    val windowHeightDp: Int,
+    val orientation: String,
+    val displayWidthPx: Int,
+    val displayHeightPx: Int,
+    val densityDpi: Int,
+    val densityScale: String,
+    val smallestWidthDp: Int,
+    val refreshRateHz: String,
+    val hasCutout: Boolean,
+    val cutoutTopPx: Int,
+    val cornerRadiusPx: Int,
+    val theme: String,
+    val manufacturer: String,
+    val model: String,
+    val androidRelease: String,
+    val sdkInt: Int,
+    val appVersion: String,
+)
+
+/** Reads the facts from the platform. */
+fun collectDeviceScreenInfo(activity: Activity): DeviceScreenInfo {
+    val configuration = activity.resources.configuration
+    val metrics = activity.resources.displayMetrics
+
+    val refreshRate = run {
+        val hz = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            activity.display?.refreshRate
+        } else {
+            @Suppress("DEPRECATION")
+            activity.windowManager.defaultDisplay?.refreshRate
+        }
+        if (hz == null || hz <= 0f) "unknown" else hz.toInt().toString()
+    }
+
+    val insets = activity.window.decorView.rootWindowInsets
+    val cutout = insets?.displayCutout
+
+    val cornerRadius = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        runCatching { insets?.getRoundedCorner(0)?.radius ?: 0 }.getOrDefault(0)
+    } else {
+        0
+    }
+
+    return DeviceScreenInfo(
+        windowWidthDp = configuration.screenWidthDp,
+        windowHeightDp = configuration.screenHeightDp,
+        orientation = when (configuration.orientation) {
+            Configuration.ORIENTATION_LANDSCAPE -> "landscape"
+            Configuration.ORIENTATION_PORTRAIT -> "portrait"
+            else -> "other"
+        },
+        displayWidthPx = metrics.widthPixels,
+        displayHeightPx = metrics.heightPixels,
+        densityDpi = metrics.densityDpi,
+        densityScale = String.format(Locale.US, "%.3f", metrics.density).trimEnd('0').trimEnd('.'),
+        smallestWidthDp = configuration.smallestScreenWidthDp,
+        refreshRateHz = refreshRate,
+        hasCutout = cutout != null && (
+            cutout.safeInsetTop > 0 || cutout.safeInsetBottom > 0 ||
+                cutout.safeInsetLeft > 0 || cutout.safeInsetRight > 0
+            ),
+        cutoutTopPx = cutout?.safeInsetTop ?: 0,
+        cornerRadiusPx = cornerRadius,
+        theme = if (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
+        ) "dark" else "light",
+        manufacturer = Build.MANUFACTURER ?: "unknown",
+        model = Build.MODEL ?: "unknown",
+        androidRelease = Build.VERSION.RELEASE ?: "unknown",
+        sdkInt = Build.VERSION.SDK_INT,
+        appVersion = runCatching {
+            activity.packageManager.getPackageInfo(activity.packageName, 0).versionName
+        }.getOrNull() ?: "unknown",
+    )
+}
+
+/**
+ * The details block that accompanies the user's description.
+ *
+ * The screen the user was on is named separately from the controller mode, because a layout
+ * bug only reproduces on the screen it was seen on.
+ */
+fun DeviceScreenInfo.toDetailsBlock(
+    screenLabel: String,
+    mode: ControllerMode,
+    hostType: HostType,
+    hidStatus: String,
+    tiltOn: Boolean,
+): String = buildString {
+    appendLine("Screen")
+    appendLine("  Window        $windowWidthDp x $windowHeightDp dp ($orientation)")
+    appendLine("  Display       $displayWidthPx x $displayHeightPx px, $densityDpi dpi ($densityScale" + "x)")
+    appendLine("  Smallest w    $smallestWidthDp dp")
+    appendLine("  Refresh rate  $refreshRateHz Hz")
+    appendLine(
+        if (hasCutout) "  Cutout        yes — $cutoutTopPx px top inset" else "  Cutout        no"
+    )
+    appendLine(
+        if (cornerRadiusPx > 0) "  Corners       $cornerRadiusPx px radius" else "  Corners       none"
+    )
+    appendLine("  Theme         $theme")
+    appendLine()
+    appendLine("Device")
+    appendLine("  $manufacturer $model")
+    appendLine("  Android $androidRelease (SDK $sdkInt)")
+    appendLine()
+    appendLine("App")
+    appendLine("  HID Controller $appVersion")
+    appendLine("  Screen         $screenLabel")
+    appendLine("  Mode           ${modeName(mode)}")
+    appendLine("  Host type      ${hostName(hostType)}")
+    appendLine("  HID            $hidStatus")
+    appendLine("  Tilt           ${if (tiltOn) "on" else "off"}")
+}
+
+private fun modeName(mode: ControllerMode): String = when (mode) {
+    ControllerMode.GAMEPAD -> "Gamepad"
+    ControllerMode.MOUSE -> "Mouse"
+    ControllerMode.KEYBOARD -> "Keyboard"
+}
+
+private fun hostName(type: HostType): String = when (type) {
+    HostType.WINDOWS -> "Windows PC"
+    HostType.ANDROID -> "Android device"
+}
