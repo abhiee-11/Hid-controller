@@ -186,6 +186,7 @@ app/src/main/kotlin/com/hidgamepad/
 app/src/main/res/
   drawable/ic_logo.xml        The controller mark, drawn on a 24-unit grid
   drawable/ic_launcher_foreground.xml  The same mark, scaled into the adaptive-icon safe zone
+  drawable/ic_launcher_monochrome.xml   The same mark again, for themed launcher icons
   mipmap-anydpi-v26/          Adaptive launcher icon (background, foreground, monochrome)
   values/themes.xml           Theme.HidController — the window background before the first frame
 ```

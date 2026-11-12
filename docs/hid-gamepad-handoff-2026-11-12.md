@@ -237,7 +237,10 @@ Suite after this feature: **182 tests, 0 failures**.
   adaptive canvas (translate 18.5 / 17.8), so the 54 × 36 dp mark sits inside the 72 dp safe
   zone and no launcher mask clips the grips.
 - **`mipmap-anydpi-v26/ic_launcher{,_round}.xml`** are the adaptive icons: a colour background
-  layer, the foreground, and a monochrome layer (the mark again, for themed icons).
+  layer, the foreground, and a monochrome layer for themed icons. The monochrome layer has its
+  own 108 dp vector (`ic_launcher_monochrome.xml`) that repeats the foreground's exact
+  transform — reusing the 24 dp mark there would have drawn the themed icon at a different
+  size from the colour one.
 - **`Theme.HidController`** (`res/values/themes.xml`) gives the window the charcoal background
   before the first frame, so launching does not flash white. It stays a platform theme on
   purpose — the project has no AppCompat or Material Components dependency.
