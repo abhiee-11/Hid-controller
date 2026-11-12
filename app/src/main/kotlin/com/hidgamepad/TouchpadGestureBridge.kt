@@ -49,6 +49,9 @@ class TouchpadGestureBridge(
                 sendKeyboard(KeyboardState(0))
             }
             is PadAction.Host -> hostAction(action.direction)
+            // Phone-local: the gesture pad consumes this before the bridge ever sees it.
+            // Kept explicit so this `when` stays exhaustive and nothing is sent by accident.
+            is PadAction.PadGlowToggle -> Unit
         }
     }
 

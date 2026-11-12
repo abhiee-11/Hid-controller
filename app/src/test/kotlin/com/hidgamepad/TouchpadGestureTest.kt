@@ -271,6 +271,38 @@ class TouchpadGestureTest {
     }
 
     @Test
+    fun `four finger double tap toggles the pad glow once`() {
+        val r = recog()
+        val four = arrayOf(pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f), pt(4, 220f, 200f))
+        r.frame(fr(0, *four))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(100)))
+        r.frame(fr(200, *four))
+        assertEquals(listOf(PadAction.PadGlowToggle), r.frame(fr(300)))
+    }
+
+    @Test
+    fun `a lone four finger tap does not toggle the glow`() {
+        val r = recog()
+        val four = arrayOf(pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f), pt(4, 220f, 200f))
+        r.frame(fr(0, *four))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(100)))
+        // A second lone tap well past the double-tap window still emits nothing.
+        r.frame(fr(1000, *four))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(1100)))
+    }
+
+    @Test
+    fun `reset clears a pending pad glow tap`() {
+        val r = recog()
+        val four = arrayOf(pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f), pt(4, 220f, 200f))
+        r.frame(fr(0, *four))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(100)))
+        r.reset()
+        r.frame(fr(200, *four))
+        assertEquals(emptyList<PadAction>(), r.frame(fr(300)))
+    }
+
+    @Test
     fun `two fingers landing in separate frames still tap`() {
         val r = recog()
         r.frame(fr(0, pt(1, 100f, 200f)))
