@@ -232,10 +232,10 @@ const val RGB_BRIGHTNESS_MIN = 0.1f
 const val RGB_BRIGHTNESS_MAX = 1f
 
 /** Read the stored brightness, tolerating an Int percentage written by newer builds. */
-fun readStoredBrightness(prefs: android.content.SharedPreferences, default: Float): Float {
-    val asFloat = runCatching { prefs.getFloat("rgb_brightness", default) }.getOrNull()
+fun readStoredBrightness(prefs: android.content.SharedPreferences, default: Float, key: String = "rgb_brightness"): Float {
+    val asFloat = runCatching { prefs.getFloat(key, default) }.getOrNull()
     if (asFloat != null) return asFloat.coerceIn(RGB_BRIGHTNESS_MIN, RGB_BRIGHTNESS_MAX)
-    val asInt = runCatching { prefs.getInt("rgb_brightness", (default * 100f).toInt()) }.getOrNull()
+    val asInt = runCatching { prefs.getInt(key, (default * 100f).toInt()) }.getOrNull()
     return ((asInt ?: (default * 100f).toInt()) / 100f).coerceIn(RGB_BRIGHTNESS_MIN, RGB_BRIGHTNESS_MAX)
 }
 

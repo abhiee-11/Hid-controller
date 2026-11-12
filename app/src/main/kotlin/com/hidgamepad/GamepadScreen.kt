@@ -143,6 +143,14 @@ private fun rgbFlowLabel(flow: RgbFlow): String = when (flow) {
     RgbFlow.RIGHT_TO_LEFT -> "Right to left"
 }
 
+private fun padGlowEffectLabel(effect: PadGlowEffect): String = when (effect) {
+    PadGlowEffect.STATIC -> "Static"
+    PadGlowEffect.BREATHING -> "Breathing"
+    PadGlowEffect.COLOR_CYCLE -> "Color cycle"
+    PadGlowEffect.RAINBOW -> "Rainbow"
+    PadGlowEffect.REACTIVE -> "Reactive"
+}
+
 fun hostTitle(hostType: HostType): String = when (hostType) {
     HostType.WINDOWS -> "Windows PC"
     HostType.ANDROID -> "Android phone or tablet"
@@ -313,6 +321,46 @@ fun GamepadScreen(
             .apply()
     }
 
+    // The Mouse-mode touchpad's border glow. Independent of the keyboard backlight: its
+    // own prefs keys (pad_glow_*), own effect, colour and brightness, its own clock.
+    // Built defensively, like the backlight: a stored Int for pad_glow_brightness must
+    // not crash the read, and a missing key falls back to defaults.
+    var padGlow by remember {
+        mutableStateOf(
+            runCatching {
+                PadGlowConfig(
+                    enabled = prefs.getBoolean("pad_glow_on", false),
+                    effect = runCatching { PadGlowEffect.valueOf(prefs.getString("pad_glow_effect", "STATIC") ?: "STATIC") }
+                        .getOrDefault(PadGlowEffect.STATIC),
+                    speed = runCatching { prefs.getFloat("pad_glow_speed", 1f) }.getOrDefault(1f),
+                    color = prefs.getInt("pad_glow_color", 0),
+                    brightness = readStoredBrightness(prefs, 1f, "pad_glow_brightness"),
+                )
+            }.getOrDefault(PadGlowConfig()),
+        )
+    }
+    fun savePadGlow(newConfig: PadGlowConfig) {
+        padGlow = newConfig
+        prefs.edit()
+            .putBoolean("pad_glow_on", newConfig.enabled)
+            .putString("pad_glow_effect", newConfig.effect.name)
+            .putFloat("pad_glow_speed", newConfig.speed)
+            .putInt("pad_glow_color", newConfig.color)
+            .putFloat("pad_glow_brightness", newConfig.brightness)
+            .apply()
+    }
+    val padGlowStart = remember { System.currentTimeMillis() }
+    val padGlowClock by produceState(initialValue = 0L, key1 = padGlow.enabled) {
+        if (!padGlow.enabled) {
+            value = 0L
+            return@produceState
+        }
+        while (true) {
+            value = System.currentTimeMillis() - padGlowStart
+            delay(80)
+        }
+    }
+
     fun resetLocalInputs() {
         model.touchLx = 0f
         model.tiltLx = 0f
@@ -437,6 +485,8 @@ fun GamepadScreen(
                         onKeyboardState = onKeyboardState,
                         onConsumerState = onConsumerState,
                         modifier = Modifier.weight(1f),
+                        padGlow = padGlow,
+                        padGlowTimeMillis = padGlowClock,
                     )
                     Text(
                         "Tap = click · 2-finger tap = right click · 2-finger drag = scroll · " +
@@ -551,6 +601,8 @@ fun GamepadScreen(
                 onClearInputs = { resetLocalInputs(); onReleaseAllInputs() },
                 rgbConfig = rgbConfig,
                 onRgb = { saveRgbConfig(it) },
+                padGlow = padGlow,
+                onPadGlow = { savePadGlow(it) },
             )
         }
     }
@@ -854,6 +906,8 @@ private fun SettingsPanelPreview() {
         onClearInputs = {},
         rgbConfig = RgbConfig(),
         onRgb = {},
+        padGlow = PadGlowConfig(),
+        onPadGlow = {},
     )
 }
 
@@ -936,6 +990,8 @@ private fun SettingsPanel(
     onClearInputs: () -> Unit,
     rgbConfig: RgbConfig,
     onRgb: (RgbConfig) -> Unit,
+    padGlow: PadGlowConfig,
+    onPadGlow: (PadGlowConfig) -> Unit,
 ) {
     val profile = profileForHostType(hostType)
     Box(Modifier.fillMaxSize().background(PadColors.background).safeDrawingPadding()) {
@@ -1108,6 +1164,55 @@ private fun SettingsPanel(
                                         CircleShape,
                                     )
                                     .clickable(onClick = { onRgb(rgbConfig.copy(staticColor = index)) }),
+                            )
+                        }
+                    }
+                    // --- Mouse pad glow: the Mouse-mode touchpad border, independent of the
+                    // keyboard backlight above ---
+                    Text("Mouse pad glow", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = PadColors.text)
+                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "Glow: ${if (padGlow.enabled) "ON" else "OFF"}",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = PadColors.text,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Switch(
+                            checked = padGlow.enabled,
+                            onCheckedChange = { onPadGlow(padGlow.copy(enabled = it)) },
+                        )
+                    }
+                    Text("The Mouse-mode touchpad border. Independent of the keyboard backlight above.", fontSize = 11.sp, color = PadColors.secondary)
+                    Text("Effect: ${padGlowEffectLabel(padGlow.effect)}", fontSize = 12.sp, color = PadColors.secondary)
+                    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        for (effect in PadGlowEffect.entries) {
+                            PadPill(
+                                padGlowEffectLabel(effect),
+                                accent = padGlow.effect == effect,
+                                onClick = { onPadGlow(padGlow.copy(effect = effect)) },
+                                modifier = Modifier.height(34.dp),
+                            )
+                        }
+                    }
+                    Text("Speed x${"%.2f".format(padGlow.speed)}", fontSize = 12.sp, color = PadColors.secondary)
+                    Slider(value = padGlow.speed, onValueChange = { onPadGlow(padGlow.copy(speed = it)) }, valueRange = 0.25f..2f, steps = 6, modifier = Modifier.width(220.dp))
+                    Text("Brightness ${"%.0f".format(padGlow.brightness * 100)}%", fontSize = 12.sp, color = PadColors.secondary)
+                    Slider(value = padGlow.brightness, onValueChange = { onPadGlow(padGlow.copy(brightness = it)) }, valueRange = 0.1f..1f, steps = 8, modifier = Modifier.width(220.dp))
+                    Text("Colour", fontSize = 12.sp, color = PadColors.secondary)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for ((index, preset) in RGB_PRESETS.withIndex()) {
+                            Box(
+                                Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.hsv(preset.hue, preset.sat, preset.value))
+                                    .border(
+                                        1.dp,
+                                        if (padGlow.color == index) PadColors.accent else PadColors.border,
+                                        CircleShape,
+                                    )
+                                    .clickable(onClick = { onPadGlow(padGlow.copy(color = index)) }),
                             )
                         }
                     }
