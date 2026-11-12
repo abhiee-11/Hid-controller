@@ -13,7 +13,10 @@ Pick this up tomorrow. Everything below is measured, not inferred, unless marked
   carried, and they were the only commits in the repo still holding the raw device serials.
   `main`'s history now contains none.
 - Build + tests: `.\gradlew.bat --console=plain testDebugUnitTest assembleDebug`
-  → **143 tests, 0 failures**.
+  → **179 tests, 0 failures**.
+- **The app has a "Report a problem" feature and a redesigned first-use tutorial** (see the
+  sections below). The tutorial is once-only and replayable from Settings → Getting started.
+  The app stays landscape-locked.
 - **The L2/R2 triggers are digital again** (commit `d7ca8a2`): a press anywhere on the strip
   is a full pull (`ABS_GAS`/`ABS_BRAKE` 255), not a position ramp. They had been analog
   position-ramped since `c1a1ece`, which put the centred "R2" label at half travel and made
@@ -172,6 +175,47 @@ Two defects were found by that device check and fixed:
 layer is untouched: no descriptor, no encoder, no button bit, no gesture threshold.
 
 Suite after this feature: **170 tests, 0 failures**.
+
+## First-run tutorial (commit `dbcb999`)
+
+The old setup wizard was a functional list of buttons: no progress, no way back, no way out,
+and it reappeared whenever no host had been chosen. It is now a tutorial over the same five
+questions:
+
+| Step | Content |
+|---|---|
+| 1 | Welcome — what the app is, and a Get started button |
+| 2 | Host type — Windows PC or Android device; this picks the HID descriptor |
+| 3 | Mode — gamepad, mouse or keyboard |
+| 4 | Pairing — the instructions and the bonded hosts |
+| 5 | Ready — the summary and **Start using the app** |
+
+- **Progress**: a bar and "Step N of 5".
+- **Skip** is available on every step and lands on the final step rather than vanishing, so
+  nobody is stranded halfway with no way to finish.
+- **Back** from step 2 onwards; **Next** until the last step.
+- Each step has an illustration drawn on a `Canvas` — no image assets, no emoji, so it scales
+  and can never render as a missing glyph.
+- **Replayable** from Settings → *Getting started*, which is now the only way in.
+- **Once only.** `needsOnboarding` depends on `setup_complete` alone; the old rule also
+  re-showed the wizard when no host had been chosen, and choosing a host is the Devices
+  screen's job. The test for it was updated to the new contract.
+
+**Layout adaptation.** Below 600 dp the illustration stacks above the text; above it they sit
+side by side; the content column is capped at 640 dp and centred, and the Settings sheet gets
+the same cap, so nothing sprawls across a tablet.
+
+**Orientation.** The app stays **landscape-locked** — an earlier attempt to unlock it was
+reverted. The manifest now absorbs *every* configuration change
+(`orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection`),
+which matters beyond tidiness: recreating the activity on a layout change would release every
+held input (onPause) and re-register the HID device mid-game.
+
+**Verified on the phone (2026-11-12):** steps 1→5, Back (5→4), Next (4→5), Skip (→5) and
+"Start using the app" all behave; and with `setup_complete=true` the tutorial does not
+reappear even though `last_host_address` was removed.
+
+Suite after this feature: **179 tests, 0 failures**.
 
 ## Verified on the tablet (composite profile)
 

@@ -29,6 +29,18 @@ needed on the receiving side. Mode switching happens in the app and does not re-
 - On-screen status bar: mode selector, Devices, Settings, connection state
 - Master HID on/off switch in Settings (see below)
 - Optional phone-local haptic feedback (persisted); this is not host-controlled rumble
+- A first-run tutorial, and a "Report a problem" button (see below)
+
+## First run
+
+The first time the app is launched it walks through five short steps: welcome, which host you
+will control, which controller you want, how to pair, and a summary. You can go **Back**, you
+can **Skip** at any point, and the tutorial never comes back on its own once it is finished —
+but you can replay it any time from **Settings → Getting started**.
+
+Picking the host type is the one answer that matters: it chooses the HID descriptor the phone
+registers, and it decides what the three-finger swipes send (Windows chords versus Android
+Home/Back/Forward).
 
 ## Requirements
 
