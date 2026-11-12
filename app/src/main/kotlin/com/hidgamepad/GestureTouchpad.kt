@@ -161,31 +161,34 @@ fun GestureTouchpad(
             Modifier.fillMaxSize()
         }
         Canvas(padModifier) {
-            drawRoundRect(color = Color(0xFF26272F), cornerRadius = CornerRadius(20f, 20f))
+            // The pad is inset so the halo has somewhere to go: a glow drawn outside the
+            // border is clipped by the canvas when the pad fills it edge to edge.
+            val inset = 18f
+            val padTopLeft = Offset(inset, inset)
+            val padSize = Size(size.width - inset * 2, size.height - inset * 2)
+            drawRoundRect(
+                color = Color(0xFF26272F),
+                topLeft = padTopLeft,
+                size = padSize,
+                cornerRadius = CornerRadius(20f, 20f),
+            )
             drawRoundRect(
                 color = Color(0xFF555C6B),
+                topLeft = padTopLeft,
+                size = padSize,
                 cornerRadius = CornerRadius(20f, 20f),
                 style = Stroke(width = 2f),
             )
-            // The pad glow: a soft halo on both sides of the border, only when enabled.
+            // The pad glow: a soft halo that spills outward past the border, only when enabled.
             val glowColor = padGlowColor(padGlow, position = 0f, touched = fingerDown, timeMillis = padGlowTimeMillis)
             if (glowColor != null) {
                 for (i in 1..3) {
-                    val spread = i * 2f
-                    // Light spilling outward past the border.
+                    val spread = i * 3f
                     drawRoundRect(
-                        color = glowColor.copy(alpha = 0.18f / i),
-                        topLeft = Offset(-spread, -spread),
-                        size = Size(size.width + spread * 2, size.height + spread * 2),
+                        color = glowColor.copy(alpha = 0.22f / i),
+                        topLeft = Offset(padTopLeft.x - spread, padTopLeft.y - spread),
+                        size = Size(padSize.width + spread * 2, padSize.height + spread * 2),
                         cornerRadius = CornerRadius(20f + spread, 20f + spread),
-                        style = Stroke(width = 2f + spread),
-                    )
-                    // Light spilling inward into the pad.
-                    drawRoundRect(
-                        color = glowColor.copy(alpha = 0.13f / i),
-                        topLeft = Offset(spread, spread),
-                        size = Size(size.width - spread * 2, size.height - spread * 2),
-                        cornerRadius = CornerRadius(20f - spread, 20f - spread),
                         style = Stroke(width = 2f + spread),
                     )
                 }
@@ -193,10 +196,10 @@ fun GestureTouchpad(
             // Faint dot-grid so the surface reads as a touchpad, not a joystick track.
             val dotColor = Color(0xFF3A3B45).copy(alpha = 0.55f)
             val step = 36f
-            var x = step
-            while (x < size.width - 8f) {
-                var y = step
-                while (y < size.height - 8f) {
+            var x = padTopLeft.x + step
+            while (x < padTopLeft.x + padSize.width - 8f) {
+                var y = padTopLeft.y + step
+                while (y < padTopLeft.y + padSize.height - 8f) {
                     drawCircle(dotColor, radius = 2.5f, center = Offset(x, y))
                     y += step
                 }
