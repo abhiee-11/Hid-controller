@@ -60,17 +60,12 @@ fun TutorialPanel(
     step: TutorialStep,
     hostType: HostType,
     mode: ControllerMode,
-    bondedDevices: () -> List<BluetoothDevice>,
-    onDiscoverable: () -> Unit,
     onHostType: (HostType) -> Unit,
     onMode: (ControllerMode) -> Unit,
-    onConnect: (BluetoothDevice) -> Boolean,
     onStep: (TutorialStep) -> Unit,
     onFinish: () -> Unit,
 ) {
     val colors = LocalTutorialColors
-    var selectedDevice by remember { mutableStateOf<BluetoothDevice?>(null) }
-    var deviceList by remember { mutableStateOf<List<BluetoothDevice>>(emptyList()) }
 
     BoxWithConstraints(
         Modifier
@@ -166,25 +161,6 @@ fun TutorialPanel(
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     when (step) {
-                        TutorialStep.WELCOME -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text(
-                                text = "Welcome to HID Controller",
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.title,
-                            )
-                            Text(
-                                text = "Turn this phone into a wireless gamepad, mouse or keyboard for another device. Everything happens over Bluetooth - no app is needed on the other side.",
-                                fontSize = 14.sp,
-                                color = colors.body,
-                            )
-                            Text(
-                                text = "You can skip this, and change every answer later in Settings.",
-                                fontSize = 12.sp,
-                                color = colors.hint,
-                            )
-                        }
-
                         TutorialStep.HOST -> {
                             Text(
                                 text = "What will you control?",
@@ -219,7 +195,7 @@ fun TutorialPanel(
                                 color = colors.title,
                             )
                             Text(
-                                text = "You can switch modes any time from the app.",
+                                text = "Choose the controller mode to start with. You can switch modes any time from the app.",
                                 fontSize = 14.sp,
                                 color = colors.body,
                             )
@@ -240,85 +216,6 @@ fun TutorialPanel(
                                 detail = "A full QWERTY layout with a function row.",
                                 selected = mode == ControllerMode.KEYBOARD,
                                 onClick = { onMode(ControllerMode.KEYBOARD) },
-                            )
-                        }
-
-                        TutorialStep.PAIR -> {
-                            Text(
-                                text = "Pair with your host",
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.title,
-                            )
-                            Text(
-                                text = "Pairing always starts on the host. Make the phone discoverable, then pick it on the host Bluetooth screen.",
-                                fontSize = 14.sp,
-                                color = colors.body,
-                            )
-                            Text(
-                                text = pairInstructions(hostType),
-                                fontSize = 13.sp,
-                                color = colors.hint,
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    onClick = onDiscoverable,
-                                    modifier = Modifier.height(48.dp),
-                                ) { Text("Make discoverable") }
-                                Button(
-                                    onClick = { deviceList = bondedDevices() },
-                                    modifier = Modifier.height(48.dp),
-                                ) { Text("Refresh devices") }
-                            }
-                            if (deviceList.isEmpty()) {
-                                Text(
-                                    text = "No paired devices found yet.",
-                                    fontSize = 12.sp,
-                                    color = colors.hint,
-                                )
-                            } else {
-                                for (device in deviceList) {
-                                    val name = runCatching { device.name }.getOrNull() ?: "Bluetooth device"
-                                    Row(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .height(56.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(
-                                            text = name,
-                                            fontSize = 14.sp,
-                                            color = colors.title,
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                        Button(
-                                            onClick = {
-                                                if (onConnect(device)) selectedDevice = device
-                                            },
-                                            enabled = selectedDevice != device,
-                                            modifier = Modifier.height(48.dp),
-                                        ) { Text("Connect") }
-                                    }
-                                }
-                            }
-                        }
-
-                        TutorialStep.READY -> {
-                            Text(
-                                text = "You are all set",
-                                fontSize = 22.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = colors.title,
-                            )
-                            Text(
-                                text = "The controller works even before a host is paired - you can pair later from Devices.",
-                                fontSize = 14.sp,
-                                color = colors.body,
-                            )
-                            Text(
-                                text = "Host: ${hostTitle(hostType)}   Mode: ${modeLabel(mode)}",
-                                fontSize = 13.sp,
-                                color = colors.hint,
                             )
                         }
                     }
@@ -350,7 +247,7 @@ fun TutorialPanel(
                     Button(
                         onClick = onFinish,
                         modifier = Modifier.height(48.dp),
-                    ) { Text("Start using the app") }
+                    ) { Text("Open Controller") }
                 } else {
                     Button(
                         onClick = { step.next()?.let(onStep) },
@@ -428,37 +325,6 @@ private fun TutorialArtwork(step: TutorialStep, modifier: Modifier = Modifier) {
         val w = size.width
         val h = size.height
         when (step) {
-            TutorialStep.WELCOME -> {
-                // A gamepad silhouette.
-                val body = Path().apply {
-                    moveTo(w * 0.12f, h * 0.42f)
-                    cubicTo(w * 0.12f, h * 0.24f, w * 0.36f, h * 0.30f, w * 0.50f, h * 0.38f)
-                    cubicTo(w * 0.64f, h * 0.30f, w * 0.88f, h * 0.24f, w * 0.88f, h * 0.42f)
-                    cubicTo(w * 0.88f, h * 0.70f, w * 0.72f, h * 0.76f, w * 0.62f, h * 0.58f)
-                    lineTo(w * 0.38f, h * 0.58f)
-                    cubicTo(w * 0.28f, h * 0.76f, w * 0.12f, h * 0.70f, w * 0.12f, h * 0.42f)
-                    close()
-                }
-                drawPath(body, color = colors.card)
-                drawPath(body, color = colors.accent, style = Stroke(width = 3.dp.toPx()))
-                drawCircle(colors.accent, radius = w * 0.055f, center = Offset(w * 0.68f, h * 0.50f))
-                drawCircle(colors.accent, radius = w * 0.055f, center = Offset(w * 0.79f, h * 0.56f))
-                drawLine(
-                    colors.body,
-                    Offset(w * 0.24f, h * 0.50f),
-                    Offset(w * 0.36f, h * 0.50f),
-                    strokeWidth = 3.dp.toPx(),
-                    cap = StrokeCap.Round,
-                )
-                drawLine(
-                    colors.body,
-                    Offset(w * 0.30f, h * 0.44f),
-                    Offset(w * 0.30f, h * 0.56f),
-                    strokeWidth = 3.dp.toPx(),
-                    cap = StrokeCap.Round,
-                )
-            }
-
             TutorialStep.HOST -> {
                 // A screen and a phone, linked.
                 drawRoundRect(
@@ -528,50 +394,6 @@ private fun TutorialArtwork(step: TutorialStep, modifier: Modifier = Modifier) {
                         )
                     }
                 }
-            }
-
-            TutorialStep.PAIR -> {
-                // Two devices and a link between them.
-                drawCircle(colors.card, radius = w * 0.10f, center = Offset(w * 0.22f, h * 0.50f))
-                drawCircle(
-                    colors.accent,
-                    radius = w * 0.10f,
-                    center = Offset(w * 0.22f, h * 0.50f),
-                    style = Stroke(width = 3.dp.toPx()),
-                )
-                drawCircle(colors.card, radius = w * 0.10f, center = Offset(w * 0.78f, h * 0.50f))
-                drawCircle(
-                    colors.accent,
-                    radius = w * 0.10f,
-                    center = Offset(w * 0.78f, h * 0.50f),
-                    style = Stroke(width = 3.dp.toPx()),
-                )
-                drawLine(
-                    colors.accent,
-                    Offset(w * 0.36f, h * 0.50f),
-                    Offset(w * 0.64f, h * 0.50f),
-                    strokeWidth = 3.dp.toPx(),
-                    cap = StrokeCap.Round,
-                )
-            }
-
-            TutorialStep.READY -> {
-                // A tick.
-                val stroke = 6.dp.toPx()
-                drawLine(
-                    colors.accent,
-                    Offset(w * 0.28f, h * 0.52f),
-                    Offset(w * 0.44f, h * 0.68f),
-                    strokeWidth = stroke,
-                    cap = StrokeCap.Round,
-                )
-                drawLine(
-                    colors.accent,
-                    Offset(w * 0.44f, h * 0.68f),
-                    Offset(w * 0.74f, h * 0.34f),
-                    strokeWidth = stroke,
-                    cap = StrokeCap.Round,
-                )
             }
         }
     }

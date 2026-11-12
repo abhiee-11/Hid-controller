@@ -206,8 +206,6 @@ fun GamepadScreen(
         TutorialPanel(
             hostType = hostType,
             mode = controllerMode,
-            bondedDevices = bondedDevices,
-            onDiscoverable = onDiscoverable,
             onHostType = { newType ->
                 hostType = newType
                 prefs.edit().putString("host_type", newType.name).apply()
@@ -217,16 +215,6 @@ fun GamepadScreen(
             onMode = { newMode ->
                 controllerMode = newMode
                 prefs.edit().putString("controller_mode", newMode.name).apply()
-            },
-            onConnect = { device ->
-                val ok = onConnect(device)
-                if (ok) {
-                    prefs.edit()
-                        .putString("last_host_address", safeDeviceAddress(device))
-                        .putString("last_host_name", deviceLabel(device))
-                        .apply()
-                }
-                ok
             },
             onStep = { onboardingStep = it },
             step = onboardingStep,

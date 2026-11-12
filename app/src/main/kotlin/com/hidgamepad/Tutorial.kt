@@ -1,33 +1,20 @@
 package com.hidgamepad
 
 /**
- * The steps of the first-use tutorial.
+ * The steps of first-use setup.
  *
- * The tutorial teaches what the app is and how to get a host connected. It is the *same*
- * five questions the app has always asked — host type, mode, pairing — presented as a
- * tutorial the user can step through, go back from, skip, and replay later.
- *
- * The model is pure so the navigation rules are unit-testable without a device: a tutorial
- * that can strand the user is a bug that is expensive to find on a phone.
+ * When fresh opening the app, the user directly chooses the host (Windows PC or Android)
+ * and the device mode (Gamepad, Mouse, Keyboard) and proceeds directly into the controller.
  */
 enum class TutorialStep {
-    /** What the app is, and a Get started button. */
-    WELCOME,
-
     /** Which kind of host will be controlled — this also picks the HID descriptor. */
     HOST,
 
-    /** Which controller to start with. */
+    /** Which controller to start with (Gamepad, Mouse, Keyboard). */
     MODE,
-
-    /** How to pair, and the hosts already bonded. */
-    PAIR,
-
-    /** The summary, and the way into the app. */
-    READY,
     ;
 
-    /** The 1-based position, for "Step 2 of 5". */
+    /** The 1-based position, for "Step 1 of 2". */
     val number: Int get() = ordinal + 1
 
     /** The next step, or null when this is the last one. */
@@ -37,22 +24,18 @@ enum class TutorialStep {
     fun previous(): TutorialStep? = entries.getOrNull(ordinal - 1)
 
     /**
-     * Where **Skip** goes.
-     *
-     * Skipping lands on the final step rather than vanishing: the user still gets the
-     * summary and one obvious way into the app, and nobody is left halfway through a
-     * tutorial with no way out.
+     * Where **Skip** goes (finishes setup).
      */
-    fun skipTarget(): TutorialStep = READY
+    fun skipTarget(): TutorialStep = MODE
 
-    /** True on the step that finishes the tutorial. */
-    val isFinal: Boolean get() = this == READY
+    /** True on the step that finishes setup. */
+    val isFinal: Boolean get() = this == MODE
 
     companion object {
-        /** How many steps the tutorial has. */
+        /** How many steps setup has. */
         val count: Int = entries.size
 
-        /** The step the tutorial starts on. */
-        val start: TutorialStep = WELCOME
+        /** The step setup starts on. */
+        val start: TutorialStep = HOST
     }
 }
