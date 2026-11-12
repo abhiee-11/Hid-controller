@@ -41,6 +41,16 @@ const val KEYBOARD_REPORT_SIZE = 8
 const val MOUSE_REPORT_SIZE = 5
 const val GAMEPAD_REPORT_SIZE = 9
 
+/**
+ * The highest key usage the registered keyboard collection declares (Usage Maximum 101).
+ *
+ * Every key the on-screen keyboard can press has to sit inside this range, because the host
+ * decodes the keyboard collection as the range the descriptor declares. A key outside it
+ * would be ignored by the host, and since the host caches the descriptor at pairing time,
+ * the only fix would be a re-pair.
+ */
+const val KEYBOARD_USAGE_MAX = 0x65
+
 enum class ControllerMode { GAMEPAD, MOUSE, KEYBOARD }
 
 enum class HostType { WINDOWS, ANDROID }
@@ -124,6 +134,15 @@ const val MOD_RIGHT_SHIFT = 0x20
 const val MOD_RIGHT_ALT = 0x40
 const val MOD_RIGHT_GUI = 0x80
 
+/**
+ * The eight modifier bits the keyboard collection declares (E0..E7). A modifier outside this
+ * set would be one the host does not read.
+ */
+val MODIFIER_BITS = setOf(
+    MOD_LEFT_CTRL, MOD_LEFT_SHIFT, MOD_LEFT_ALT, MOD_LEFT_GUI,
+    MOD_RIGHT_CTRL, MOD_RIGHT_SHIFT, MOD_RIGHT_ALT, MOD_RIGHT_GUI,
+)
+
 object KeyUsage {
     const val A = 0x04
     const val B = 0x05
@@ -170,8 +189,23 @@ object KeyUsage {
     const val LEFT = 0x50
     const val DOWN = 0x51
     const val UP = 0x52
-}
 
+    // The function keys. Every one of them is inside the range the registered descriptor
+    // already declares (Usage Maximum 0x65), so they cost nothing on the wire and need no
+    // re-pair.
+    const val F1 = 0x3A
+    const val F2 = 0x3B
+    const val F3 = 0x3C
+    const val F4 = 0x3D
+    const val F5 = 0x3E
+    const val F6 = 0x3F
+    const val F7 = 0x40
+    const val F8 = 0x41
+    const val F9 = 0x42
+    const val F10 = 0x43
+    const val F11 = 0x44
+    const val F12 = 0x45
+}
 data class KeyboardState(
     val modifiers: Int = 0,
     val pressedKeys: Set<Int> = emptySet(),

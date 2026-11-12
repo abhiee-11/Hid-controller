@@ -23,7 +23,7 @@ needed on the receiving side. Mode switching happens in the app and does not re-
 - Mouse: buttonless trackpad — tap click, two-finger tap right-click, two-finger scroll
   (vertical and horizontal), pinch zoom, double-tap then hold to drag, three-finger tap
   middle-click, three-finger swipes per host
-- Keyboard: A–Z, 0–9, Space, Enter, Escape, Backspace, Tab, arrows, Ctrl/Shift/Alt
+- Keyboard: A–Z, 0–9, F1–F12, Space, Enter, Escape, Backspace, Tab, arrows, Ctrl/Shift/Alt/Win
 - Multi-touch controls: hold a stick and tap buttons at the same time
 - ~8% stick deadzone, stick recenter on release
 - On-screen status bar: mode selector, Devices, Settings, connection state

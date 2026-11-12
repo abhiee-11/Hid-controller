@@ -92,8 +92,9 @@ class TouchpadGestureTest {
         r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f)))
         r.frame(fr(50, pt(1, 100f, 200f), pt(2, 140f, 200f)))
         assertEquals(emptyList<PadAction>(), r.frame(fr(66, pt(1, 100f, 195f), pt(2, 140f, 195f))))
+        // 20 dp of travel at the default rate is two notches.
         assertEquals(
-            listOf(PadAction.Scroll(wheel = -1, hPan = 0)),
+            listOf(PadAction.Scroll(wheel = -2, hPan = 0)),
             r.frame(fr(82, pt(1, 100f, 180f), pt(2, 140f, 180f))),
         )
     }
@@ -104,8 +105,42 @@ class TouchpadGestureTest {
         r.frame(fr(0, pt(1, 100f, 200f), pt(2, 100f, 240f)))
         r.frame(fr(50, pt(1, 100f, 200f), pt(2, 100f, 240f)))
         assertEquals(
-            listOf(PadAction.Scroll(wheel = 0, hPan = 1)),
+            listOf(PadAction.Scroll(wheel = 0, hPan = 2)),
             r.frame(fr(70, pt(1, 120f, 200f), pt(2, 120f, 240f))),
+        )
+    }
+
+    @Test
+    fun `the scroll step is the documented dp per notch`() {
+        // Ten dp of travel per notch at the default sensitivity, so 20 dp is two notches.
+        assertEquals(10f, SCROLL_STEP_DP)
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        r.frame(fr(50, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        assertEquals(
+            listOf(PadAction.Scroll(wheel = -2, hPan = 0)),
+            r.frame(fr(70, pt(1, 100f, 180f), pt(2, 140f, 180f))),
+        )
+    }
+
+    @Test
+    fun `the scroll step follows the sensitivity`() {
+        // The same 20 dp of travel is twice the notches at double sensitivity, and half at
+        // half sensitivity.
+        val fast = TouchpadGestureRecognizer(density = 1f, sensitivity = 2f)
+        fast.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        fast.frame(fr(50, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        assertEquals(
+            listOf(PadAction.Scroll(wheel = -4, hPan = 0)),
+            fast.frame(fr(70, pt(1, 100f, 180f), pt(2, 140f, 180f))),
+        )
+
+        val slow = TouchpadGestureRecognizer(density = 1f, sensitivity = 0.5f)
+        slow.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        slow.frame(fr(50, pt(1, 100f, 200f), pt(2, 140f, 200f)))
+        assertEquals(
+            listOf(PadAction.Scroll(wheel = -1, hPan = 0)),
+            slow.frame(fr(70, pt(1, 100f, 180f), pt(2, 140f, 180f))),
         )
     }
 
@@ -123,7 +158,7 @@ class TouchpadGestureTest {
         r.frame(fr(20, pt(1, 100f, 200f), pt(2, 140f, 200f)))
         r.frame(fr(60, pt(1, 100f, 200f), pt(2, 140f, 200f)))
         assertEquals(
-            listOf(PadAction.Scroll(wheel = -1, hPan = 0)),
+            listOf(PadAction.Scroll(wheel = -2, hPan = 0)),
             r.frame(fr(80, pt(1, 100f, 180f), pt(2, 140f, 180f))),
         )
     }
@@ -134,7 +169,7 @@ class TouchpadGestureTest {
         r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f)))
         r.frame(fr(50, pt(1, 100f, 200f), pt(2, 140f, 200f)))
         assertEquals(
-            listOf(PadAction.Scroll(wheel = -1, hPan = 0)),
+            listOf(PadAction.Scroll(wheel = -2, hPan = 0)),
             r.frame(fr(70, pt(1, 100f, 180f), pt(2, 140f, 180f))),
         )
         assertEquals(emptyList<PadAction>(), r.frame(fr(90, pt(1, 100f, 180f))))
