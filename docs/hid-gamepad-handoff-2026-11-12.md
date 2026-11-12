@@ -17,6 +17,8 @@ Pick this up tomorrow. Everything below is measured, not inferred, unless marked
 - **The app has a "Report a problem" feature and a redesigned first-use tutorial** (see the
   sections below). The tutorial is once-only and replayable from Settings → Getting started.
   The app stays landscape-locked.
+- **The app has a logo and a launcher icon, and its launcher name is now "Bluetooth
+  Controller"** (see "Branding" below). The in-app title still says "HID Controller".
 - **The L2/R2 triggers are digital again** (commit `d7ca8a2`): a press anywhere on the strip
   is a full pull (`ABS_GAS`/`ABS_BRAKE` 255), not a position ramp. They had been analog
   position-ramped since `c1a1ece`, which put the centred "R2" label at half travel and made
@@ -221,6 +223,34 @@ held input (onPause) and re-register the HID device mid-game.
 reappear even though `last_host_address` was removed.
 
 Suite after this feature: **182 tests, 0 failures**.
+
+## Branding: logo, launcher icon and the app name (commit `1c6ad0c`)
+
+- **The mark** is a gamepad silhouette with the d-pad and the two face buttons punched out as
+  negative space (`fillType="evenOdd"`), so it still reads as a controller at 24 dp. It is drawn
+  in the app's brand blue `#82B4EA` on the app's charcoal `#141519`.
+- **`res/drawable/ic_logo.xml`** is the mark on a **24-unit grid**. This matters: the path was
+  first written in a 0..1 space against a 24-unit viewport, which made the mark 3 % of the icon
+  — about one pixel, and it looked like nothing was rendering. Both the in-app `Icon` and the
+  adaptive foreground use the same path data.
+- **`res/drawable/ic_launcher_foreground.xml`** scales that 24-unit art by 2.96 into the 108 dp
+  adaptive canvas (translate 18.5 / 17.8), so the 54 × 36 dp mark sits inside the 72 dp safe
+  zone and no launcher mask clips the grips.
+- **`mipmap-anydpi-v26/ic_launcher{,_round}.xml`** are the adaptive icons: a colour background
+  layer, the foreground, and a monochrome layer (the mark again, for themed icons).
+- **`Theme.HidController`** (`res/values/themes.xml`) gives the window the charcoal background
+  before the first frame, so launching does not flash white. It stays a platform theme on
+  purpose — the project has no AppCompat or Material Components dependency.
+- **The in-app `Icon` needed `tint = Color.Unspecified`.** Material 3's `Icon` tints with
+  `LocalContentColor`, which is black on this bar, so the mark was painted black on a near-black
+  bar and was invisible. A pixel count of the top strip confirmed it (0 brand-blue pixels).
+- **The launcher label is now "Bluetooth Controller"** — the old name assumed the reader knows
+  what HID means. Only the launcher label changed; the in-app title, the notification title and
+  the report body still say "HID Controller".
+
+**Verified on the phone (2026-11-12):** the app-info screen shows the label
+"Bluetooth Controller" and renders the adaptive icon with the d-pad cross and both face-button
+holes punched out; the in-app top bar shows the mark next to the title.
 
 ## Verified on the tablet (composite profile)
 

@@ -1,4 +1,4 @@
-# HID Controller — portfolio write-up
+# Bluetooth Controller — portfolio write-up
 
 *A Bluetooth HID controller for Android: turn a phone into a gamepad, mouse or keyboard for a PC or tablet — over Bluetooth Classic, with no companion app on the host.*
 
@@ -49,6 +49,12 @@ that host**.
   screen details (window size in dp, display density, cutout and corner geometry, refresh rate,
   current screen, HID state) so the report is actionable without anyone describing their own
   setup.
+- **A first-run tutorial** that explains the pairing flow in five steps, with illustrations
+  drawn on a `Canvas` — no image assets, no emoji, nothing that can render as a missing glyph.
+- **A mark and a launcher icon** drawn as a single vector: a gamepad silhouette with the d-pad
+  and the two face buttons punched out of it, so it still reads as a controller at 24 dp. The
+  launcher icon reuses the same path in an adaptive icon with a monochrome layer, and the app is
+  called **Bluetooth Controller** on the home screen — "HID" is jargon.
 
 ## How it works
 
@@ -102,6 +108,16 @@ and is never included. The HID state is reported as a plain word (`registered`, 
 Getting that wrong was a real review finding, and it is the kind of thing that is easy to miss
 in a feature that "only goes to me".
 
+**5. A mark that survives being small.** The logo is one vector path — a gamepad silhouette with
+the d-pad and the two face buttons punched out of it as negative space — reused for the in-app
+top bar and for the adaptive launcher icon. Nothing is a bitmap, so it is sharp at every density
+and it can be recoloured (the monochrome layer for themed icons is the same path). Getting the
+holes to read at 24 dp took two rounds of pixel-counting the screenshot on the device: the first
+version was drawn in a 0..1 space against a 24-unit viewport, so it was rendering at about one
+pixel, and the second was invisible for a different reason — Material's `Icon` tints its painter
+with the content colour, which is black on a near-black bar. Both failures looked identical
+from the UI ("nothing is there"), and only measuring the pixels told them apart.
+
 ## Numbers
 
 | | |
@@ -140,7 +156,7 @@ Honesty about the edges is part of the work:
 
 ## Short version
 
-> **HID Controller** — an Android app that turns a phone into a Bluetooth gamepad, mouse or
+> **Bluetooth Controller** — an Android app that turns a phone into a Bluetooth gamepad, mouse or
 > keyboard for a PC or tablet.
 >
 > The interesting part was that Android reads a gamepad's buttons *positionally* from the HID
