@@ -21,6 +21,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -46,6 +47,8 @@ fun GestureTouchpad(
     onKeyboardState: (KeyboardState) -> Unit,
     onConsumerState: (ConsumerState) -> Unit,
     modifier: Modifier = Modifier,
+    padGlow: PadGlowConfig = PadGlowConfig(),
+    padGlowTimeMillis: Long = 0L,
 ) {
     val density = LocalDensity.current.density
     val context = LocalContext.current
@@ -147,6 +150,29 @@ fun GestureTouchpad(
                 cornerRadius = CornerRadius(20f, 20f),
                 style = Stroke(width = 2f),
             )
+            // The pad glow: a soft halo on both sides of the border, only when enabled.
+            val glowColor = padGlowColor(padGlow, position = 0f, touched = fingerDown, timeMillis = padGlowTimeMillis)
+            if (glowColor != null) {
+                for (i in 1..3) {
+                    val spread = i * 2f
+                    // Light spilling outward past the border.
+                    drawRoundRect(
+                        color = glowColor.copy(alpha = 0.18f / i),
+                        topLeft = Offset(-spread, -spread),
+                        size = Size(size.width + spread * 2, size.height + spread * 2),
+                        cornerRadius = CornerRadius(20f + spread, 20f + spread),
+                        style = Stroke(width = 2f + spread),
+                    )
+                    // Light spilling inward into the pad.
+                    drawRoundRect(
+                        color = glowColor.copy(alpha = 0.13f / i),
+                        topLeft = Offset(spread, spread),
+                        size = Size(size.width - spread * 2, size.height - spread * 2),
+                        cornerRadius = CornerRadius(20f - spread, 20f - spread),
+                        style = Stroke(width = 2f + spread),
+                    )
+                }
+            }
             // Faint dot-grid so the surface reads as a touchpad, not a joystick track.
             val dotColor = Color(0xFF3A3B45).copy(alpha = 0.55f)
             val step = 36f
