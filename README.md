@@ -1,4 +1,4 @@
-# HID Controller
+# Bluetooth Controller
 
 Turn an Android phone into a Bluetooth HID controller for another device (Windows PC,
 Android phone or tablet, or other HID host). The phone registers one combined HID
@@ -180,7 +180,14 @@ app/src/main/kotlin/com/hidgamepad/
   ProblemReport.kt      ntfy report: topic validation, message body, HTTPS publish
   DeviceScreenInfo.kt   Device and screen facts attached to a report
   ReportProblemPanel.kt The report-a-problem screen
+  Tutorial.kt           The five tutorial steps (unit-tested)
+  TutorialPanel.kt      The tutorial screen
   MainActivity.kt       Permissions, immersive mode, app lifecycle
+app/src/main/res/
+  drawable/ic_logo.xml        The controller mark, drawn on a 24-unit grid
+  drawable/ic_launcher_foreground.xml  The same mark, scaled into the adaptive-icon safe zone
+  mipmap-anydpi-v26/          Adaptive launcher icon (background, foreground, monochrome)
+  values/themes.xml           Theme.HidController — the window background before the first frame
 ```
 
 ## Unsupported / intentionally not implemented
