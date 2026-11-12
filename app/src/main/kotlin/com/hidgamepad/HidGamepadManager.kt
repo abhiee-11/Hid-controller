@@ -75,25 +75,31 @@ class HidGamepadManager(context: Context) {
 
     /**
      * Which HID descriptor the phone registers. The host caches the descriptor at pairing
-     * time, so changing this only takes effect after the user re-pairs.
+     * time, so a change takes effect on the host only after the user re-pairs.
      */
     var hidProfile: HidProfile = HidProfile.COMPOSITE
         set(value) {
             if (field == value) return
             field = value
             if (appRegistered) {
-                // The stack keeps the old registration; a new one needs the host to
-                // re-read the descriptor, which only a re-pair can achieve.
-                Log.i(TAG, "HID profile changed to $value - re-pair the host to apply it")
+                // Publish the new descriptor to the local stack so the host reads it when it
+                // re-pairs. The host keeps its cached descriptor until then, so reports still
+                // follow pairedProfile and the UI keeps asking for a re-pair.
+                Log.i(TAG, "HID profile changed to $value - re-registering")
+                reregisterForProfile()
             }
         }
 
     /**
      * The profile the host was paired with. The host caches the descriptor at pairing
-     * time, so this is what the host actually understands until the user re-pairs.
+     * time, so this is what the host actually decodes until the user re-pairs. Reports are
+     * encoded with this, never with [hidProfile], or the host parses the wrong length.
      */
     private val _pairedProfile = MutableStateFlow(HidProfile.COMPOSITE)
     val pairedProfile: StateFlow<HidProfile> = _pairedProfile
+
+    /** True while a profile change is tearing the old registration down to publish a new one. */
+    private var reregisterPending = false
 
     /** True between the stack accepting registerApp() and its status callback arriving.
      * Without this, a second start() re-registers while the first attempt is still in flight;
@@ -134,14 +140,63 @@ class HidGamepadManager(context: Context) {
      * service - before the settings screen is ever opened - uses the right descriptor.
      */
     private fun loadStoredProfile() {
-        val stored = appContext
-            .getSharedPreferences("hid_gamepad", Context.MODE_PRIVATE)
-            .getString("hid_profile", null)
-        val profile = hidProfileFromStorage(stored)
+        val prefs = appContext.getSharedPreferences("hid_gamepad", Context.MODE_PRIVATE)
+        val profile = hidProfileFromStorage(prefs.getString("hid_profile", null))
         if (profile != hidProfile) {
             Log.i(TAG, "restoring stored HID profile: $profile")
             hidProfile = profile
         }
+        // The host's descriptor is the one it was paired with, which can lag the selection.
+        val paired = pairedProfileFromStorage(prefs.getString("paired_profile", null), profile)
+        if (paired != _pairedProfile.value) {
+            Log.i(TAG, "restoring paired HID profile: $paired")
+            _pairedProfile.value = paired
+        }
+    }
+
+    /**
+     * The user confirms the host was re-paired. The phone cannot observe the host's cached
+     * descriptor, so this explicit signal is what clears the warning and switches reports to
+     * the selected profile.
+     */
+    fun confirmRepaired() {
+        val profile = hidProfile
+        if (_pairedProfile.value == profile) return
+        Log.i(TAG, "user confirmed a re-pair; reports now follow $profile")
+        _pairedProfile.value = profile
+        appContext.getSharedPreferences("hid_gamepad", Context.MODE_PRIVATE)
+            .edit().putString("paired_profile", profile.name).apply()
+        // Re-seed so the host gets one report in the new format even before the next input.
+        lastGamepadReport = reportForHost(profile, profile, GamepadState())
+    }
+
+    /**
+     * Unregister and re-register so a profile change publishes its descriptor to the local
+     * stack. The live host is dropped, which is expected: it has to re-pair to read the new
+     * descriptor, and the UI tells the user so.
+     */
+    private fun reregisterForProfile() {
+        val hd = hidDevice ?: return
+        if (reregisterPending) return
+        reregisterPending = true
+        Log.i(TAG, "re-registering for profile $hidProfile")
+        mainHandler.removeCallbacks(retryRegister)
+        registerRetryCount = 0
+        try {
+            hd.unregisterApp()
+        } catch (_: Exception) {
+            Log.w(TAG, "unregisterApp failed while switching profile")
+        }
+        appRegistered = false
+        registerInFlight = false
+        hostDevice = null
+        lastGamepadReport = null
+        lastKeyboardReport = null
+        stopHeartbeat()
+        stopConnectionPoll()
+        _status.value = Status.Unregistered
+        // If the unregister callback never arrives, retry the registration anyway.
+        mainHandler.postDelayed(retryRegister, RETRY_MS)
     }
 
     /** Fetch the HID DEVICE proxy, then register the app (SDP record + descriptor). */
@@ -312,6 +367,7 @@ class HidGamepadManager(context: Context) {
             registerInFlight = false
             appRegistered = registered
             if (registered) {
+                reregisterPending = false
                 registerRetryCount = 0
                 mainHandler.removeCallbacks(retryRegister)
                 if (pluggedDevice != null) {
@@ -343,8 +399,16 @@ class HidGamepadManager(context: Context) {
                 stopHeartbeat()
                 stopConnectionPoll()
                 _status.value = Status.Unregistered
-                // The stack can reject registration (e.g. another HID app holds it); retry with backoff.
-                if (hidDevice != null) scheduleRegisterRetry()
+                if (reregisterPending) {
+                    // The unregister that precedes a profile change completed: publish the
+                    // new descriptor now instead of scheduling a backoff retry.
+                    reregisterPending = false
+                    mainHandler.removeCallbacks(retryRegister)
+                    registerApp()
+                } else if (hidDevice != null) {
+                    // The stack can reject registration (e.g. another HID app holds it); retry with backoff.
+                    scheduleRegisterRetry()
+                }
             }
         }
 
@@ -353,9 +417,8 @@ class HidGamepadManager(context: Context) {
                 "(${stateName(state)})")
             when (state) {
                 BluetoothProfile.STATE_CONNECTED -> {
-                    // A host that connects now understands the descriptor the phone
-                    // registered, so the profile it is paired with is the current one.
-                    _pairedProfile.value = hidProfile
+                    // Do not treat a reconnect as a re-pair: the host keeps the descriptor it
+                    // cached when it was paired, so only the user can confirm a re-pair.
                     refreshConnected("state connected")
                 }
                 BluetoothProfile.STATE_CONNECTING -> {
@@ -500,7 +563,7 @@ class HidGamepadManager(context: Context) {
     /** Push a fresh gamepad snapshot; sends only when the report actually changed. */
     fun updateGamepad(state: GamepadState) {
         if (hostDevice == null) return
-        val report = reportFor(hidProfile, state)
+        val report = reportForHost(hidProfile, _pairedProfile.value, state)
         if (lastGamepadReport?.contentEquals(report) == true) return
         lastGamepadReport = report
         sendReportNow(GAMEPAD_REPORT_ID, report)
@@ -607,7 +670,9 @@ class HidGamepadManager(context: Context) {
     private fun startHeartbeat() {
         // Seed the neutral report so the host starts receiving a heartbeat right away,
         // even before the first input happens.
-        if (lastGamepadReport == null) lastGamepadReport = reportFor(hidProfile, GamepadState())
+        if (lastGamepadReport == null) {
+            lastGamepadReport = reportForHost(hidProfile, _pairedProfile.value, GamepadState())
+        }
         if (lastKeyboardReport == null) lastKeyboardReport = KeyboardState().encodeReport()
         lastGamepadReport?.let { sendReportNow(GAMEPAD_REPORT_ID, it) }
         mainHandler.removeCallbacks(heartbeat)
@@ -627,7 +692,7 @@ class HidGamepadManager(context: Context) {
     fun releaseAllInputs() {
         val keyboard = KeyboardState().encodeReport()
         val mouse = MouseState().encodeReport()
-        val gamepad = reportFor(hidProfile, GamepadState())
+        val gamepad = reportForHost(hidProfile, _pairedProfile.value, GamepadState())
         val consumer = ConsumerState().encodeReport()
         sendReportNow(KEYBOARD_REPORT_ID, keyboard)
         sendReportNow(MOUSE_REPORT_ID, mouse)

@@ -163,6 +163,45 @@ class GamepadProfileTest {
             assertEquals(0, report[1].toInt() and 0xFF)
         }
     }
+
+    @Test
+    fun `the paired profile falls back to the selected one on first run`() {
+        // A fresh install has no stale host cache, so the selected profile is also the one
+        // the host will be paired with; warning about a re-pair would be wrong.
+        assertEquals(HidProfile.GAMEPAD_ONLY, pairedProfileFromStorage(null, HidProfile.GAMEPAD_ONLY))
+        assertEquals(HidProfile.COMPOSITE, pairedProfileFromStorage(null, HidProfile.COMPOSITE))
+    }
+
+    @Test
+    fun `a stored paired profile survives a later profile change`() {
+        // This is the whole point of the field: after switching to GAMEPAD_ONLY the host
+        // still decodes COMPOSITE, and the app must keep remembering that until re-paired.
+        assertEquals(HidProfile.COMPOSITE, pairedProfileFromStorage("COMPOSITE", HidProfile.GAMEPAD_ONLY))
+        assertEquals(HidProfile.GAMEPAD_ONLY, pairedProfileFromStorage("GAMEPAD_ONLY", HidProfile.COMPOSITE))
+    }
+
+    @Test
+    fun `an unrecognised stored paired profile falls back to the selected one`() {
+        assertEquals(HidProfile.GAMEPAD_ONLY, pairedProfileFromStorage("nonsense", HidProfile.GAMEPAD_ONLY))
+    }
+
+    @Test
+    fun `reports follow the paired profile not the newly selected one`() {
+        // The defect this guards: after a switch to GAMEPAD_ONLY without a re-pair, the host
+        // still decodes the 9-byte composite, so a 13-byte report is parsed as garbage.
+        val stale = reportForHost(
+            selected = HidProfile.GAMEPAD_ONLY,
+            paired = HidProfile.COMPOSITE,
+            state = GamepadState(),
+        )
+        assertEquals(9, stale.size)
+        val fresh = reportForHost(
+            selected = HidProfile.GAMEPAD_ONLY,
+            paired = HidProfile.GAMEPAD_ONLY,
+            state = GamepadState(),
+        )
+        assertEquals(13, fresh.size)
+    }
 }
 
 private fun axisWord(report: ByteArray, offset: Int): Int {

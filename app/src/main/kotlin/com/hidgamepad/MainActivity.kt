@@ -158,6 +158,7 @@ class MainActivity : ComponentActivity() {
                         onReleaseAllInputs = { manager.releaseAllInputs() },
                         registeredProfile = pairedProfile,
                         onProfileChanged = { newProfile -> manager.hidProfile = newProfile },
+                        onConfirmRepair = { manager.confirmRepaired() },
                     )
                 } else {
                     Column(

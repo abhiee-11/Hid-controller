@@ -123,6 +123,7 @@ fun GamepadScreen(
     onReleaseAllInputs: () -> Unit,
     registeredProfile: HidProfile = HidProfile.COMPOSITE,
     onProfileChanged: (HidProfile) -> Unit = {},
+    onConfirmRepair: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -477,6 +478,7 @@ fun GamepadScreen(
                     prefs.edit().putString("hid_profile", newProfile.name).apply()
                     onProfileChanged(newProfile)
                 },
+                onConfirmRepair = onConfirmRepair,
                 onHaptics = onHapticsChange,
                 onHapticsStrength = onHapticsStrengthChange,
                 onTilt = { enabled ->
@@ -600,6 +602,7 @@ private fun SettingsPanel(
     profile: HidProfile,
     registeredProfile: HidProfile,
     onProfile: (HidProfile) -> Unit,
+    onConfirmRepair: () -> Unit,
     onHaptics: (Boolean) -> Unit,
     onHapticsStrength: (Float) -> Unit,
     onTilt: (Boolean) -> Unit,
@@ -663,6 +666,9 @@ private fun SettingsPanel(
                 fontSize = 11.sp,
                 color = Color(0xFFE06A5A),
             )
+            Button(onClick = onConfirmRepair, modifier = Modifier.height(48.dp)) {
+                Text("I've re-paired the host")
+            }
         }
         Button(onClick = { onHaptics(!hapticsEnabled) }, modifier = Modifier.height(48.dp)) {
             Text(if (hapticsEnabled) "Haptics ON" else "Haptics OFF")

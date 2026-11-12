@@ -23,6 +23,15 @@ const val GAMEPAD_ONLY_REPORT_SIZE = 13
 fun hidProfileFromStorage(name: String?): HidProfile =
     runCatching { HidProfile.valueOf(name ?: "") }.getOrDefault(HidProfile.COMPOSITE)
 
+/**
+ * The profile the host was last paired with, read from storage.
+ *
+ * Defaults to [selected] on first run: a fresh install has no stale host cache, so the
+ * profile the user picked is also the one the host will pair with.
+ */
+fun pairedProfileFromStorage(name: String?, selected: HidProfile): HidProfile =
+    name?.let { runCatching { HidProfile.valueOf(it) }.getOrNull() } ?: selected
+
 /** Maps a canonical button bit to its W3C standard-layout wire bit, or -1 if unmapped. */
 fun w3cWireBit(canonicalBit: Int): Int = when (canonicalBit) {
     Btn.A -> 0
@@ -73,6 +82,17 @@ fun reportFor(profile: HidProfile, state: GamepadState): ByteArray = when (profi
     HidProfile.COMPOSITE -> state.encodeReport()
     HidProfile.GAMEPAD_ONLY -> encodeGamepadOnlyReport(state)
 }
+
+/**
+ * The report to send for the current inputs.
+ *
+ * The host caches the report descriptor at pairing time, so after a profile change it still
+ * decodes the profile it was paired with. Reports must follow [paired], never the newly
+ * [selected] profile, until the user confirms a re-pair — otherwise the host mis-parses a
+ * report of the wrong length as garbage input.
+ */
+fun reportForHost(selected: HidProfile, paired: HidProfile, state: GamepadState): ByteArray =
+    reportFor(paired, state)
 
 /**
  * Encodes a gamepad snapshot into the gamepad-only report.
