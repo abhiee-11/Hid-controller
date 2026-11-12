@@ -52,8 +52,11 @@ Six rows, no layers:
 | 2 | `Esc` `1`..`0` `Backspace` |
 | 3 | `Tab` `Q`..`P` `Enter` |
 | 4 | `Shift` `A`..`L` `Shift` |
-| 5 | `Ctrl` `Z`..`M` `Win` `Alt` |
-| 6 | `Space` `←` `↑` `↓` `→` |
+| 5 | `Ctrl` `Z`..`M` `Alt` |
+| 6 | `Win` `Space` `←` `↑` `↓` `→` (arrows narrow) |
+
+`Win` sits at the bottom-left, next to `Space`, and the arrow keys take a smaller share of their
+row so `Space` gets most of it.
 
 `Win` is a press-and-hold modifier, exactly like `Ctrl`, so it works alone (Start menu) and in
 a chord (`Win+E`). Every usage is inside `0x00..0x65`, so no descriptor change.

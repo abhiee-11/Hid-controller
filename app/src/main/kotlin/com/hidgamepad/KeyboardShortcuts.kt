@@ -60,12 +60,15 @@ fun keyboardRows(): List<List<KeyCap>> = listOf(
         cap("Ctrl", KeyAction.Modifier(MOD_LEFT_CTRL)),
         cap("Z", KeyUsage.Z), cap("X", KeyUsage.X), cap("C", KeyUsage.C), cap("V", KeyUsage.V),
         cap("B", KeyUsage.B), cap("N", KeyUsage.N), cap("M", KeyUsage.M),
-        cap("Win", KeyAction.Modifier(MOD_LEFT_GUI)),
         cap("Alt", KeyAction.Modifier(MOD_LEFT_ALT)),
     ),
+    // Win sits at the bottom-left, next to Space; the arrow keys are narrow so Space gets most
+    // of the row.
     listOf(
+        cap("Win", KeyAction.Modifier(MOD_LEFT_GUI)),
         cap("Space", KeyUsage.SPACE, 2f),
-        cap("←", KeyUsage.LEFT), cap("↑", KeyUsage.UP), cap("↓", KeyUsage.DOWN), cap("→", KeyUsage.RIGHT),
+        cap("←", KeyUsage.LEFT, 0.5f), cap("↑", KeyUsage.UP, 0.5f),
+        cap("↓", KeyUsage.DOWN, 0.5f), cap("→", KeyUsage.RIGHT, 0.5f),
     ),
 )
 
