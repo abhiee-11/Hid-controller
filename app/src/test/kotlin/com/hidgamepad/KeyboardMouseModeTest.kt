@@ -1,6 +1,7 @@
 package com.hidgamepad
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -128,10 +129,10 @@ class KeyboardMouseModeTest {
         assertEquals(ControllerMode.GAMEPAD, controllerModeFromStorage("NOPE"))
         assertEquals(HostType.ANDROID, hostTypeFromStorage("ANDROID"))
         assertEquals(HostType.WINDOWS, hostTypeFromStorage(null))
-        assertTrue(needsOnboarding(false, "AA"))
-        assertTrue(needsOnboarding(true, null))
-        assertTrue(needsOnboarding(true, ""))
-        assertEquals(false, needsOnboarding(true, "AA"))
+        // The tutorial is a one-time thing: once it has been finished it never comes back
+        // on its own, whether or not a host has been chosen yet.
+        assertTrue(needsOnboarding(false))
+        assertFalse(needsOnboarding(true))
     }
 
     @Test

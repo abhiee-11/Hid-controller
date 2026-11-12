@@ -19,11 +19,18 @@
         android:label="HID Controller"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar">
+        <!--
+          The app is a one-hand landscape controller: the gamepad, the touchpad and the
+          keyboard all need the width. Every configuration change is absorbed here anyway —
+          recreating the activity on a layout change would release every held input
+          (onPause) and re-register the HID device mid-game, and would drop any screen the
+          user had open.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:screenOrientation="landscape"
-            android:configChanges="orientation|screenSize|keyboardHidden">
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
