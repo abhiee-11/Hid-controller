@@ -232,7 +232,7 @@ In `KeyboardStage`, add `capsOn: Boolean` after `pressedKeys` and `onCapsChange:
 Run: `.\gradlew.bat --console=plain testDebugUnitTest assembleDebug`
 Expected: BUILD SUCCESSFUL, 192 tests, 0 failures.
 
-Device-verify (phone `PHONE-SERIAL`, app is landscape): Settings -> mode Keyboard. Tap **Caps** - the white dot appears. Tap **A** - the host receives uppercase A. Tap **1** - the host receives `1`, not `!`. Tap **Caps** again - the dot goes away.
+Device-verify (the connected phone, app is landscape): Settings -> mode Keyboard. Tap **Caps** - the white dot appears. Tap **A** - the host receives uppercase A. Tap **1** - the host receives `1`, not `!`. Tap **Caps** again - the dot goes away.
 
 - [ ] **Step 9: Commit**
 
