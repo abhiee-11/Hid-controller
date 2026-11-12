@@ -88,7 +88,9 @@ fun ReportProblemPanel(
             val body = buildReportBody(description, details)
             when (val outcome = ProblemReporter.send(useTopic, REPORT_TITLE, body)) {
                 is ReportOutcome.Sent -> {
-                    result = "Sent — check your phone."
+                    // The report goes to the app's maintainer, not to the person who sent
+                    // it — "check your phone" would be wrong in a published app.
+                    result = "Report sent. Thank you."
                     failed = false
                     onTopicSaved(useTopic)
                 }

@@ -25,8 +25,8 @@ data class DeviceScreenInfo(
     val densityScale: String,
     val smallestWidthDp: Int,
     val refreshRateHz: String,
-    val hasCutout: Boolean,
-    val cutoutTopPx: Int,
+    /** The cutout and the edge it sits on, e.g. "67 px top inset"; null when there is none. */
+    val cutoutInset: String?,
     val cornerRadiusPx: Int,
     val theme: String,
     val manufacturer: String,
@@ -74,11 +74,17 @@ fun collectDeviceScreenInfo(activity: Activity): DeviceScreenInfo {
         densityScale = String.format(Locale.US, "%.3f", metrics.density).trimEnd('0').trimEnd('.'),
         smallestWidthDp = configuration.smallestScreenWidthDp,
         refreshRateHz = refreshRate,
-        hasCutout = cutout != null && (
-            cutout.safeInsetTop > 0 || cutout.safeInsetBottom > 0 ||
-                cutout.safeInsetLeft > 0 || cutout.safeInsetRight > 0
-            ),
-        cutoutTopPx = cutout?.safeInsetTop ?: 0,
+        // The cutout moves with the rotation: a phone's notch is at the top in portrait and
+        // on a side in landscape. Naming the edge it is actually on is the only way the
+        // detail is useful.
+        cutoutInset = when {
+            cutout == null -> null
+            cutout.safeInsetTop > 0 -> "${cutout.safeInsetTop} px top inset"
+            cutout.safeInsetBottom > 0 -> "${cutout.safeInsetBottom} px bottom inset"
+            cutout.safeInsetLeft > 0 -> "${cutout.safeInsetLeft} px left inset"
+            cutout.safeInsetRight > 0 -> "${cutout.safeInsetRight} px right inset"
+            else -> null
+        },
         cornerRadiusPx = cornerRadius,
         theme = if (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
             Configuration.UI_MODE_NIGHT_YES
@@ -113,7 +119,7 @@ fun DeviceScreenInfo.toDetailsBlock(
     appendLine("  Width class   ${windowSizeClass(windowWidthDp)}")
     appendLine("  Refresh rate  $refreshRateHz Hz")
     appendLine(
-        if (hasCutout) "  Cutout        yes — $cutoutTopPx px top inset" else "  Cutout        no"
+        if (cutoutInset != null) "  Cutout        yes — $cutoutInset" else "  Cutout        no"
     )
     appendLine(
         if (cornerRadiusPx > 0) "  Corners       $cornerRadiusPx px radius" else "  Corners       none"

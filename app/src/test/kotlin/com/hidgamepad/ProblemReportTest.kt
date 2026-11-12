@@ -179,7 +179,7 @@ class ProblemReportTest {
         val info = DeviceScreenInfo(
             windowWidthDp = 857, windowHeightDp = 384, orientation = "landscape",
             displayWidthPx = 720, displayHeightPx = 1608, densityDpi = 300, densityScale = "1.875",
-            smallestWidthDp = 360, refreshRateHz = "60", hasCutout = true, cutoutTopPx = 67,
+            smallestWidthDp = 360, refreshRateHz = "60", cutoutInset = "67 px top inset",
             cornerRadiusPx = 47, theme = "dark", manufacturer = "vivo", model = "V2434",
             androidRelease = "16", sdkInt = 36, appVersion = "1.1",
         )
@@ -211,7 +211,7 @@ class ProblemReportTest {
         val info = DeviceScreenInfo(
             windowWidthDp = 411, windowHeightDp = 731, orientation = "portrait",
             displayWidthPx = 1080, displayHeightPx = 2400, densityDpi = 420, densityScale = "2.625",
-            smallestWidthDp = 393, refreshRateHz = "60", hasCutout = false, cutoutTopPx = 0,
+            smallestWidthDp = 393, refreshRateHz = "60", cutoutInset = null,
             cornerRadiusPx = 0, theme = "light", manufacturer = "Google", model = "Pixel 8",
             androidRelease = "15", sdkInt = 35, appVersion = "1.1",
         )
