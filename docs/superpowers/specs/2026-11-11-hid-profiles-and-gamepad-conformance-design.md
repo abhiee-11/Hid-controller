@@ -161,6 +161,15 @@ never change meaning and only the encoder differs per profile.
 | 11 | RT | Generic Desktop Rz (Chrome maps ABS_RZ to the right trigger) | 0–255 |
 | 12 | hat switch, low nibble | Hat switch | 0–7, 8 = centred |
 
+**Deviation from that table (recorded 2026-11-12).** The code ships `HAT_NEUTRAL = 15`
+(`GamepadState.HAT_NEUTRAL`), not 8. The hat is declared with Logical Maximum 7 and a Null
+State, and the Linux/Android kernel clamps an out-of-range hat value to centred — so 15 and 8
+both read as centred on those hosts, and 15 was kept because it was measured working on the
+tablet. The value is shared by the composite profile's hat byte as well. The alternative fix
+— writing 8 — was **not** taken: it changes a byte the host sees and the Windows host (which
+now gets the gamepad-only profile) has never been exercised, so there is nothing to verify the
+change against. Reconsider it when a Windows host is available.
+
 Axis order X, Y, Rx, Ry, Z, Rz puts the six axes at indices 0–5, which is what the W3C
 standard layout expects.
 

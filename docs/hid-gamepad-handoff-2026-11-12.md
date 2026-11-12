@@ -5,7 +5,9 @@ Pick this up tomorrow. Everything below is measured, not inferred, unless marked
 
 ## Where things stand
 
-- Branch `feat/touchpad-gestures`, local only (never pushed), not merged.
+- `main` is at the merge commit `1dafd3c`, which folds in `feat/touchpad-gestures`
+  (identical tree). Everything is local only — **never pushed**: `origin/main` is still at
+  `06d552e`, `origin/feat/touchpad-gestures` at `3e72aef`.
 - Build + tests: `.\gradlew.bat --console=plain testDebugUnitTest assembleDebug`
   → **143 tests, 0 failures**.
 - **The L2/R2 triggers are digital again** (commit `d7ca8a2`): a press anywhere on the strip
@@ -189,10 +191,22 @@ Chrome 157 on the tablet (`<TABLET_SERIAL>`) **does** expose the phone to web pa
    Their bits (12/13/14) are unit-test-only. Either add controls or accept the gap.
 4. **Windows games still need XInput** (VID `045E`), which a Bluetooth HID pad can never be.
    Out of scope; needs Steam Input or ViGEm on the PC. User deferred.
-5. **Whole-branch review findings** — the review subagent
-   (`ses_e3460ba5bffeM8tmO2DwSeGe97`) was still running at shutdown. If it returned nothing,
-   re-run the review of `f6f8923..b3942e4`.
-6. `feat/touchpad-gestures` is still unmerged; the user deferred that decision.
+5. **RESOLVED — the whole-branch review findings are recorded.** The review subagent
+   (`ses_e3460ba5bffeM8tmO2DwSeGe97`) delivered after all; its findings are de-duplicated and
+   ranked in "Review findings" below, with the blocker and the two high findings fixed.
+6. **RESOLVED (2026-11-12) — the branch is merged.** `main` is at `1dafd3c`, a merge of
+   `feat/touchpad-gestures` whose tree is identical to the branch tip. Main's four commits
+   were duplicated history (the same three PC-host fixes plus the 2026-11-09 report), and
+   main's copy of the report still carried the real device serials — folding the branch in
+   redacted them. Still local only: nothing pushed.
+7. **The trigger never reaches an Android host as a button.** `ABS_GAS`/`ABS_BRAKE` reach the
+   host as axes (`AXIS_RTRIGGER`/`AXIS_LTRIGGER` via `Generic.kl`) and no key event is ever
+   generated, so a game that reads the trigger strictly as `KEYCODE_BUTTON_R2` sees nothing.
+   Fixing it means adding L2/R2 to the descriptor's button bits, which changes the frozen
+   descriptor and forces a re-pair on every host. **Needs the tablet back to verify.**
+8. **A real Windows *game* is still an unverified manual check**, and XInput games need a
+   PC-side translator regardless. The Windows profile (GAMEPAD_ONLY) has never been exercised
+   by a real host. **Needs the PC and the tablet back.**
 
 ## How to reproduce the measurements
 
@@ -296,32 +310,39 @@ Suite is now **143 tests, 0 failures**.
 
 ### Open — ranked
 
-1. **medium — GAMEPAD_ONLY wire order is wrong on Android/Linux hosts.**
-   `GamepadProfiles.kt:27-40` (`w3cWireBit`) maps X→2, Y→3, L1→4, R1→5, SEL→8, START→9. That
-   is right for a browser (positional index), but the kernel maps the same positions to
-   `BTN_C, BTN_NORTH, BTN_WEST, BTN_Z, BTN_TL2, BTN_TR2`. Measured proof the kernel is
-   positional: the composite (canonical order) produced the correct keycodes for all eight
-   buttons on the tablet. Fix: emit canonical order, or restrict the profile to browser hosts.
-   Related: `w3cWireBit` returns -1 for unmapped canonical bits and the encoder drops them
-   silently — the two profiles' button sets differ with no documentation.
+1. **RESOLVED — GAMEPAD_ONLY is no longer used on an Android/Linux host.** The wire order
+   (`GamepadProfiles.kt` `w3cWireBit` maps X→2, Y→3, L1→4, R1→5, SEL→8, START→9) is still
+   W3C order, and the kernel still maps those positions to `BTN_C, BTN_NORTH, BTN_WEST, BTN_Z,
+   BTN_TL2, BTN_TR2` — but the profile now goes only to Windows hosts, and the Windows host
+   reads buttons by declaration order. *Still true and undocumented:* `w3cWireBit` returns -1
+   for unmapped canonical bits and the encoder drops them silently, so the two profiles' button
+   sets differ with no documentation.
 2. **medium — MODE at wire bit 12 collides with the W3C D-pad slot.** In the W3C standard
    layout 12–15 are the D-pad and 16 is Guide/MODE, and the descriptor declares only 16
    buttons, so there is no index 16. The D-pad is also a hat, not buttons 12–15. Consequence:
    GAMEPAD_ONLY can never be `mapping: "standard"`. Fix: declare 17 buttons and put MODE at
-   16, or stop calling the profile W3C-standard.
+   16, or stop calling the profile W3C-standard. **Needs a descriptor change, hence a re-pair
+   on every host.**
 3. **medium — GAMEPAD_ONLY has never been exercised by a real host.** The PC measurement was
    taken on the composite (10 axes = 6 gamepad + 4 mouse). Before claiming the profile works,
-   select it, re-pair the PC, and check `axes.length == 6` and `buttons.length == 16`.
-4. **medium — `HAT_NEUTRAL` contradicts the spec.** Code ships 15 (`GamepadState.kt:30`,
-   `GamepadProfiles.kt:100`), justified by the kernel clamping an out-of-range hat to centred
+   select the Windows host type, re-pair the PC, and check `axes.length == 6` and
+   `buttons.length == 16`. **Needs the PC and the tablet back.**
+4. **RESOLVED (doc) — `HAT_NEUTRAL` contradicts the spec.** The code ships 15
+   (`GamepadState.kt:30`), justified by the kernel clamping an out-of-range hat to centred
    — sound for Linux/Android, but the spec's own table (`spec:162`) says "8 = centred", and 8
-   is the HID null value for a Null-State hat with Logical Max 7. Write 8 for the gamepad-only
-   profile or record the deviation in the spec table.
-5. **low — `GAMEPAD_ONLY_REPORT_SIZE` is dead code** (`GamepadProfiles.kt:21`): declared, never
-   used, while the encoder hardcodes 13. Use it, or delete it.
-6. **low — doc nits.** `REPORT.md` said 133 tests (now 139);
-   `docs/hid-gamepad-manual-test-checklist.md` claims PASS for "one pad, 16 buttons, 6 axes"
-   but the measured pad had **10** axes — 6 is the unverified gamepad-only target.
+   is the HID null value for a Null-State hat with Logical Max 7. The deviation is now
+   **recorded in that spec table** rather than changed in code, because writing 8 changes a
+   byte the host sees and the Windows host — which now gets this profile — has never been
+   exercised.
+5. **RESOLVED (the finding was wrong) — `GAMEPAD_ONLY_REPORT_SIZE` is not dead code.** It is
+   the size contract used by the descriptor-parse regression test
+   (`GAMEPAD_ONLY_REPORT_SIZE * 8` == the parsed bit count), which is the test that catches the
+   `0x27` blocker. The encoder's size is now tied to it in the test as well, so the two cannot
+   drift apart.
+6. **RESOLVED — doc nits.** `REPORT.md` now says 143 tests and carries a dated 2026-11-12
+   section; `docs/hid-gamepad-manual-test-checklist.md` no longer claims "16 buttons, 6 axes"
+   for the measured pad (the measured composite pad had 10 axes; 6 is the unverified
+   gamepad-only target).
 
 ### Not defects, for the record
 

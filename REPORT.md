@@ -253,9 +253,11 @@ Plan: `docs/superpowers/plans/2026-11-11-hid-profiles-and-gamepad-conformance.md
 ### User action required
 
 Both hosts have now re-paired and decode the current composite descriptor (see the table
-above). The remaining optional step is for a host that demands the **W3C standard layout**:
-select the **Gamepad only** profile on the phone and re-pair that host again, because the
-composite pad reports `mapping: ""`.
+above). **The profile is no longer a choice** — it follows the host type (see
+"Gamepad in games (2026-11-12)" below). An Android host always gets the composite pad; a
+Windows host always gets the gamepad-only pad, whose reports follow the W3C standard layout.
+Changing the host type needs a re-pair, because the host caches the descriptor at pairing
+time.
 
 ## Corrections to earlier handoff notes
 
@@ -264,8 +266,61 @@ composite pad reports `mapping: ""`.
 - The working tree was 10 modified + 9 untracked, not clean.
 - Stored `controller_mode` is `GAMEPAD`, not mouse.
 
+## Gamepad in games (2026-11-12) — host-driven profile, digital triggers
+
+This supersedes the 2026-11-11 section above where they disagree. Details and the raw
+measurements are in `docs/hid-gamepad-handoff-2026-11-12.md`.
+
+### What changed
+
+- **The HID profile follows the host type.** `profileForHostType` maps `ANDROID → COMPOSITE`
+  and `WINDOWS → GAMEPAD_ONLY`; `HidGamepadManager.loadStoredProfile()` derives it from
+  `host_type`, and the separate `hid_profile` pref and the Settings **HID profile** row are
+  gone. The two questions used to be independent, so "Android + Gamepad only" was reachable
+  — and that combination is broken (see below). One choice to make now.
+- **The triggers are digital.** L2/R2 had become analog position-ramped pedals, which put the
+  centred "R2" label at exactly half travel (`ABS_GAS` 128 of 255); a host that thresholds the
+  trigger read that as "not pressed". Any touch on the strip is now a full pull (255).
+- **A master HID on/off switch** in Settings: off releases every input, unregisters the HID
+  device, stops the foreground service and removes the notification; on reverses it. Persisted,
+  and a phone left off stays off across a restart.
+- **The branch is merged into `main`** (local only, never pushed).
+
+### Measured results
+
+| Check | Result | Evidence |
+|---|---|---|
+| Unit tests | PASS | `gradlew testDebugUnitTest` → **143 tests, 0 failures**; clean rebuild from scratch, `assembleDebug` produces the APK |
+| The profile follows the host type | PASS | switching the host type to Windows PC cleared the re-pair warning (derived GAMEPAD_ONLY == paired); switching back to Android showed it again (derived COMPOSITE != paired) |
+| A stale `hid_profile` pref does not win | PASS | with `hid_profile=GAMEPAD_ONLY` still stored, the tablet re-paired and decoded the **composite** descriptor |
+| The tablet decodes the composite | PASS | one merged node `Abhiskar's vivo Y29 Keyboard`, `Sources: KEYBOARD \| DPAD \| GAMEPAD \| MOUSE \| STYLUS \| JOYSTICK`, 8-bit X/Y/Z/RZ plus `BRAKE`/`GAS` |
+| Triggers | PASS | R2 on the label → `ABS_GAS 255` → 0 on release; L2 on the label → `ABS_BRAKE 255`; R2 at the top of the strip → `ABS_GAS 255` |
+| The host caches the descriptor | PASS | before the re-pair the tablet still showed the cached GAMEPAD_ONLY layout (16-bit X/Y/RX/RY) — the expected behaviour, and why the app warns |
+| The trigger reaches the host | PASS (as an axis only) | `ABS_GAS`/`ABS_BRAKE`, mapped to `AXIS_RTRIGGER`/`AXIS_LTRIGGER` by the tablet's `Generic.kl`. No key event is ever generated for it, so a game that reads the trigger strictly as `KEYCODE_BUTTON_R2` sees nothing — fixing that needs L2/R2 in the descriptor's button bits, and therefore a re-pair on every host |
+
+### Still open
+
+- The trigger never arrives as a button (above); needs a descriptor change and a re-pair.
+- A real Windows *game* is still an unverified manual check, and XInput games need a PC-side
+  translator (Steam Input or ViGEm) — a Bluetooth HID pad can never be XInput.
+- MODE / L3 / R3 have no on-screen control, so they cannot be pressed on any host.
+- The `HAT_NEUTRAL` value (15) contradicts the spec's own table (8); it is the kernel's
+  clamping behaviour, and the deviation is not yet recorded in the spec table.
+
 ## Commits (local only, never pushed)
 
-`0f36c05`, `22649fb`, `d5a3b44`, `7b8da8e`, `b5c7c12`, `ed71c88`, `81da7b3`, `5169867`
-on branch `feat/touchpad-gestures`.
+The branch `feat/touchpad-gestures` is merged into `main`; `main` is at the merge commit
+`1dafd3c`, whose tree is identical to the branch tip. Nothing has been pushed: `origin/main`
+is still at `06d552e` and `origin/feat/touchpad-gestures` at `3e72aef`.
+
+Latest commits on `feat/touchpad-gestures` (now also in `main`):
+
+`7f7d49d` docs(gamepad): record the digital trigger fix and its measurement
+`d7ca8a2` fix(gamepad): make the L2/R2 triggers digital
+`fab95db` docs(hid): record the host-driven profile change and its verification
+`3b24642` feat(hid): derive the HID profile from the host type
+`7591240` docs(spec): host-driven HID profile design
+
+Earlier work on the branch: `0f36c05`, `22649fb`, `d5a3b44`, `7b8da8e`, `b5c7c12`,
+`ed71c88`, `81da7b3`, `5169867`.
 

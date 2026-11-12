@@ -9,7 +9,10 @@ class GamepadProfileTest {
 
     @Test
     fun `gamepad only report is thirteen bytes`() {
-        assertEquals(13, encodeGamepadOnlyReport(GamepadState()).size)
+        // The constant is the contract, so pin it literally and tie the encoder to it:
+        // the two must not drift apart.
+        assertEquals(13, GAMEPAD_ONLY_REPORT_SIZE)
+        assertEquals(GAMEPAD_ONLY_REPORT_SIZE, encodeGamepadOnlyReport(GamepadState()).size)
     }
 
     @Test
