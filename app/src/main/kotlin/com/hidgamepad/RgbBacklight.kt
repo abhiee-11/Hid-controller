@@ -153,6 +153,17 @@ private fun String?.toZoneMode(): ZoneMode =
     ZoneMode.entries.firstOrNull { it.name.equals(this, ignoreCase = true) } ?: ZoneMode.PerKey
 
 /**
+ * The brightness key was stored as a Float by an older build, so read it defensively: a stored
+ * Float or Int both become the 10..100 step the UI uses.
+ */
+private fun readStoredBrightness(prefs: android.content.SharedPreferences, default: Int): Int {
+    val raw = runCatching { prefs.getFloat("rgb_brightness", default.toFloat()) }.getOrNull()
+    if (raw != null) return raw.toInt().coerceIn(10, 100)
+    val asInt = runCatching { prefs.getInt("rgb_brightness", default) }.getOrNull()
+    return (asInt ?: default).coerceIn(10, 100)
+}
+
+/**
  * Read the persisted backlight state from [prefs] (keys rgb_on, rgb_mode, rgb_brightness,
  * rgb_color, rgb_zones).
  */
@@ -160,7 +171,7 @@ fun loadBacklight(prefs: android.content.SharedPreferences): KeyboardBacklight =
     KeyboardBacklight(
         enabled = prefs.getBoolean("rgb_on", true),
         mode = prefs.getString("rgb_mode", null).toLightMode(),
-        brightness = prefs.getInt("rgb_brightness", 80),
+        brightness = readStoredBrightness(prefs, 80),
         staticIndex = prefs.getInt("rgb_color", 0),
         zones = prefs.getString("rgb_zones", null).toZoneMode(),
         onPersist = { e, m, b, s, z ->
