@@ -237,7 +237,13 @@ fun GamepadScreen(
 
     var keyboardModifiers by remember { mutableStateOf(0) }
     var keyboardKeys by remember { mutableStateOf<Set<Int>>(emptySet()) }
-    val keyboardState = KeyboardState(keyboardModifiers, keyboardKeys)
+    var fnHeld by remember { mutableStateOf(false) }
+    // Keys pressed while Fn was held are reported as function keys for as long as they stay
+    // held, like a laptop's Fn layer. Releasing Fn does not re-map an already-held key, and it
+    // never emits the raw digit underneath a held Fn key.
+    var fnConsumed by remember { mutableStateOf(emptySet<Int>()) }
+    val reportedKeys = keyboardKeys.map { if (it in fnConsumed) fnUsageFor(it) ?: it else it }.toSet()
+    val keyboardState = KeyboardState(keyboardModifiers, reportedKeys)
     LaunchedEffect(keyboardState) { onKeyboardState(keyboardState) }
 
     fun resetLocalInputs() {
@@ -252,6 +258,8 @@ fun GamepadScreen(
         model.buttons = 0
         keyboardModifiers = 0
         keyboardKeys = emptySet()
+        fnHeld = false
+        fnConsumed = emptySet()
     }
 
     fun switchMode(newMode: ControllerMode) {
@@ -381,6 +389,7 @@ fun GamepadScreen(
                     modifiers = keyboardModifiers,
                     pressedKeys = keyboardKeys,
                     capsLockLed = capsLockLed,
+                    fnHeld = fnHeld,
                     hapticsEnabled = hapticsEnabled,
                     hapticsStrength = hapticsStrength,
                     onModifier = { bit, down ->
@@ -388,7 +397,13 @@ fun GamepadScreen(
                     },
                     onKey = { usage, down ->
                         keyboardKeys = if (down) keyboardKeys + usage else keyboardKeys - usage
+                        if (down) {
+                            if (fnHeld && fnUsageFor(usage) != null) fnConsumed += usage
+                        } else {
+                            fnConsumed -= usage
+                        }
                     },
+                    onFn = { fnHeld = it },
                 )
             }
         }
@@ -865,10 +880,12 @@ private fun KeyboardStage(
     modifiers: Int,
     pressedKeys: Set<Int>,
     capsLockLed: Boolean,
+    fnHeld: Boolean,
     hapticsEnabled: Boolean,
     hapticsStrength: Float,
     onModifier: (Int, Boolean) -> Unit,
     onKey: (Int, Boolean) -> Unit,
+    onFn: (Boolean) -> Unit,
 ) {
     // The function row sits above the number row, so F1-F12 are always one tap away.
     val rows = listOf(functionRow()) + keyboardRows()
@@ -889,8 +906,10 @@ private fun KeyboardStage(
                         // latch, so it is lit exactly while the host has caps lock on.
                         val isCaps =
                             action is KeyAction.Usage && action.usage == KeyUsage.CAPSLOCK
+                        val isFn = action is KeyAction.Fn
                         val active = when (action) {
                             is KeyAction.Modifier -> (modifiers and action.bit) != 0
+                            is KeyAction.Fn -> fnHeld
                             is KeyAction.Usage -> action.usage in pressedKeys
                         }
                         KeyboardKeyButton(
@@ -901,12 +920,14 @@ private fun KeyboardStage(
                             onDown = {
                                 when (action) {
                                     is KeyAction.Modifier -> onModifier(action.bit, true)
+                                    is KeyAction.Fn -> onFn(true)
                                     is KeyAction.Usage -> onKey(action.usage, true)
                                 }
                             },
                             onUp = {
                                 when (action) {
                                     is KeyAction.Modifier -> onModifier(action.bit, false)
+                                    is KeyAction.Fn -> onFn(false)
                                     is KeyAction.Usage -> onKey(action.usage, false)
                                 }
                             },

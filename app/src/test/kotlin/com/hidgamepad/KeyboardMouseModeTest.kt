@@ -158,11 +158,39 @@ class KeyboardMouseModeTest {
     }
 
     @Test
-    fun `caps lock key sits left of the win key`() {
+    fun `fn key is the first key of the bottom row`() {
         val bottom = keyboardRows().last()
-        assertEquals("Caps", bottom[0].label)
-        assertEquals(KeyAction.Usage(KeyUsage.CAPSLOCK), bottom[0].action)
-        assertEquals("Win", bottom[1].label)
-        assertTrue(bottom[1].action is KeyAction.Modifier)
+        assertEquals("Fn", bottom[0].label)
+        assertEquals(KeyAction.Fn, bottom[0].action)
+    }
+
+    @Test
+    fun `caps and win follow fn in the bottom row`() {
+        val bottom = keyboardRows().last()
+        assertEquals("Caps", bottom[1].label)
+        assertEquals(KeyAction.Usage(KeyUsage.CAPSLOCK), bottom[1].action)
+        assertEquals("Win", bottom[2].label)
+        assertTrue(bottom[2].action is KeyAction.Modifier)
+    }
+
+    @Test
+    fun `fn maps the number row to the function keys`() {
+        val digits = listOf(
+            KeyUsage.NUM_1 to KeyUsage.F1,
+            KeyUsage.NUM_2 to KeyUsage.F2,
+            KeyUsage.NUM_3 to KeyUsage.F3,
+            KeyUsage.NUM_4 to KeyUsage.F4,
+            KeyUsage.NUM_5 to KeyUsage.F5,
+            KeyUsage.NUM_6 to KeyUsage.F6,
+            KeyUsage.NUM_7 to KeyUsage.F7,
+            KeyUsage.NUM_8 to KeyUsage.F8,
+            KeyUsage.NUM_9 to KeyUsage.F9,
+            KeyUsage.NUM_0 to KeyUsage.F10,
+        )
+        for ((digit, fKey) in digits) {
+            assertEquals(fKey, fnUsageFor(digit))
+        }
+        assertEquals(null, fnUsageFor(KeyUsage.A))
+        assertEquals(null, fnUsageFor(KeyUsage.SPACE))
     }
 }

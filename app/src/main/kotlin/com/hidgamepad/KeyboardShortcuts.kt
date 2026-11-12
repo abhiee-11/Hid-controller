@@ -9,6 +9,13 @@ sealed interface KeyAction {
 
     /** A modifier, held while it is touched: Ctrl, Shift, Alt or Win. */
     data class Modifier(val bit: Int) : KeyAction
+
+    /**
+     * A momentary, app-local modifier, never sent on the wire: while Fn is held the number
+     * row emits the function keys instead of the digits, like a laptop's Fn layer. There is no
+     * HID usage for Fn, so the host can never see it.
+     */
+    data object Fn : KeyAction
 }
 
 /** One key on the keyboard grid. */
@@ -62,10 +69,11 @@ fun keyboardRows(): List<List<KeyCap>> = listOf(
         cap("B", KeyUsage.B), cap("N", KeyUsage.N), cap("M", KeyUsage.M),
         cap("Alt", KeyAction.Modifier(MOD_LEFT_ALT)),
     ),
-    // Caps sits at the left of Win, next to Space; the arrow keys are narrow so Space gets
-    // most of the row. Caps is a plain HID CapsLock usage: the host toggles its own caps
-    // state and reports it back on the LED output report.
+    // Fn sits at the bottom left, like a laptop; Caps next, then Win, Space and the arrows.
+    // The arrow keys are narrow so Space gets most of the row. Caps is a plain HID CapsLock
+    // usage: the host toggles its own caps state and reports it back on the LED output report.
     listOf(
+        KeyCap("Fn", KeyAction.Fn),
         cap("Caps", KeyUsage.CAPSLOCK),
         cap("Win", KeyAction.Modifier(MOD_LEFT_GUI)),
         cap("Space", KeyUsage.SPACE, 2f),
@@ -73,6 +81,24 @@ fun keyboardRows(): List<List<KeyCap>> = listOf(
         cap("\u2193", KeyUsage.DOWN, 0.5f), cap("\u2192", KeyUsage.RIGHT, 0.5f),
     ),
 )
+
+/**
+ * The function key a number key emits while Fn is held, or null when the key is not part of
+ * the Fn layer. Fn+1..0 map to F1..F10, like a laptop.
+ */
+fun fnUsageFor(usage: Int): Int? = when (usage) {
+    KeyUsage.NUM_1 -> KeyUsage.F1
+    KeyUsage.NUM_2 -> KeyUsage.F2
+    KeyUsage.NUM_3 -> KeyUsage.F3
+    KeyUsage.NUM_4 -> KeyUsage.F4
+    KeyUsage.NUM_5 -> KeyUsage.F5
+    KeyUsage.NUM_6 -> KeyUsage.F6
+    KeyUsage.NUM_7 -> KeyUsage.F7
+    KeyUsage.NUM_8 -> KeyUsage.F8
+    KeyUsage.NUM_9 -> KeyUsage.F9
+    KeyUsage.NUM_0 -> KeyUsage.F10
+    else -> null
+}
 
 private fun cap(label: String, usage: Int, weight: Float = 1f) =
     KeyCap(label, KeyAction.Usage(usage), weight)

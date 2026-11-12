@@ -28,6 +28,8 @@ class KeyboardShortcutsTest {
                     "${cap.label} modifier 0x${action.bit.toString(16)} is not one modifier bit",
                     action.bit in MODIFIER_BITS,
                 )
+                // Fn never reaches the descriptor; every declared usage is covered above.
+                is KeyAction.Fn -> Unit
             }
         }
     }
