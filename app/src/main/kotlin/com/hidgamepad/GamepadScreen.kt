@@ -279,7 +279,8 @@ fun GamepadScreen(
     LaunchedEffect(keyboardState) { onKeyboardState(keyboardState) }
 
     // The RGB backlight: a phone-only visual effect for the on-screen keyboard. fn+L toggles
-    // it, fn+Up/Down adjusts the brightness, and the Settings panel has the full controls.
+    // it, fn+Up/Down adjusts the brightness, fn+Left/Right steps the effect, and the Settings
+    // panel has the full controls.
     // Built defensively: a stored Int for rgb_brightness (from an earlier build) would crash
     // getFloat, so every read is guarded and falls back to a sane default.
     var rgbConfig by remember {
@@ -458,14 +459,21 @@ fun GamepadScreen(
                         keyboardModifiers = if (down) keyboardModifiers or bit else keyboardModifiers and bit.inv()
                     },
                     onKey = { usage, down ->
-                        // Fn+L toggles the RGB backlight; Fn+Up/Down steps the brightness.
-                        // Like a laptop, these are consumed and never reach the host.
+                        // Fn+L toggles the RGB backlight; Fn+Up/Down steps the brightness;
+                        // Fn+Left/Right cycle the effect. Like a laptop, these are consumed
+                        // and never reach the host.
                         when {
                             fnHeld && down && usage == KeyUsage.L ->
                                 saveRgbConfig(rgbConfig.copy(enabled = !rgbConfig.enabled))
                             fnHeld && down && (usage == KeyUsage.UP || usage == KeyUsage.DOWN) -> {
                                 val delta = if (usage == KeyUsage.UP) 0.1f else -0.1f
                                 saveRgbConfig(rgbConfig.copy(brightness = adjustBrightness(rgbConfig.brightness, delta)))
+                            }
+                            fnHeld && down && (usage == KeyUsage.LEFT || usage == KeyUsage.RIGHT) -> {
+                                val order = RgbEffect.entries
+                                val step = if (usage == KeyUsage.RIGHT) 1 else -1
+                                val next = order[(order.indexOf(rgbConfig.effect) + step + order.size) % order.size]
+                                saveRgbConfig(rgbConfig.copy(effect = next))
                             }
                             else -> {
                                 keyboardKeys = if (down) keyboardKeys + usage else keyboardKeys - usage
@@ -964,7 +972,7 @@ private fun SettingsPanel(
                 onCheckedChange = { enabled -> onRgb(rgbConfig.copy(enabled = enabled)) },
             )
         }
-        Text("Four zones, phone-local. Fn+L toggles; Fn+Up and Fn+Down set the brightness.", fontSize = 11.sp, color = PadColors.secondary)
+        Text("Phone-local. Fn+L toggles; Fn+Up and Fn+Down set brightness; Fn+Left and Fn+Right step the effect.", fontSize = 11.sp, color = PadColors.secondary)
         Text("Effect: ${rgbEffectLabel(rgbConfig.effect)}", fontSize = 12.sp, color = PadColors.secondary)
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             for (effect in RgbEffect.entries) {
