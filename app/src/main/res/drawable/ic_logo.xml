@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!--
+      The controller mark: a gamepad silhouette with the d-pad and the two face buttons
+      punched out as negative space, so it still reads as a controller when it is small.
+      The d-pad sits on the left and the buttons on the right, matching the on-screen gamepad
+      layout. The path is drawn on a 24-unit grid.
+    -->
+    <path
+        android:fillColor="#82B4EA"
+        android:fillType="evenOdd"
+        android:pathData="M2.88,10.56 C2.88,6.24 8.16,6.72 12,9.12 C15.84,6.72 21.12,6.24 21.12,10.56 C21.12,16.8 17.28,18.24 14.88,13.92 L9.12,13.92 C6.72,18.24 2.88,16.8 2.88,10.56 Z M5.16,11.28 L5.88,11.28 L5.88,10.56 L7.08,10.56 L7.08,11.28 L7.8,11.28 L7.8,12.72 L7.08,12.72 L7.08,13.44 L5.88,13.44 L5.88,12.72 L5.16,12.72 Z M13.3,11.04 a1.1,1.1 0 1,0 2.2,0 a1.1,1.1 0 1,0 -2.2,0 Z M15.7,13.2 a1.1,1.1 0 1,0 2.2,0 a1.1,1.1 0 1,0 -2.2,0 Z" />
+</vector>

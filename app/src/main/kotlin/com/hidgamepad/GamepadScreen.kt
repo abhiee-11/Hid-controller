@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Slider
@@ -36,6 +37,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -272,20 +274,34 @@ fun GamepadScreen(
             Modifier.fillMaxWidth().height(48.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Column(
-                Modifier.weight(1f).fillMaxHeight(),
-                verticalArrangement = Arrangement.Center,
+            Row(
+                Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("HID Controller", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE8EAF0))
-                Text(
-                    (if (statusText.startsWith("Connected")) "● " else "○ ") + statusText,
-                    fontSize = 12.sp,
-                    color = when {
-                        statusText.startsWith("Connected") -> Color(0xFF9BB08D)
-                        statusText.startsWith("Connecting") -> Color(0xFFE0B75A)
-                        else -> Color(0xFF9AA1B2)
-                    },
+                Icon(
+                    painter = painterResource(R.drawable.ic_logo),
+                    contentDescription = null,
+                    // Unspecified, so the mark keeps its own colour: Icon would otherwise
+                    // tint it with the content colour, which is black on this bar.
+                    tint = Color.Unspecified,
+                    modifier = Modifier.size(26.dp),
                 )
+                Column(
+                    Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text("HID Controller", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE8EAF0))
+                    Text(
+                        (if (statusText.startsWith("Connected")) "● " else "○ ") + statusText,
+                        fontSize = 12.sp,
+                        color = when {
+                            statusText.startsWith("Connected") -> Color(0xFF9BB08D)
+                            statusText.startsWith("Connecting") -> Color(0xFFE0B75A)
+                            else -> Color(0xFF9AA1B2)
+                        },
+                    )
+                }
             }
             Row(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),

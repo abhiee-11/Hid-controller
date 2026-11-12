@@ -16,9 +16,11 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
-        android:label="HID Controller"
+        android:label="Bluetooth Controller"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.Material.NoActionBar">
+        android:theme="@style/Theme.HidController">
         <!--
           The app is a one-hand landscape controller: the gamepad, the touchpad and the
           keyboard all need the width. Every configuration change is absorbed here anyway —
