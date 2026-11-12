@@ -52,13 +52,15 @@ fun isValidTopic(topic: String): Boolean = ntfyTopicUrl(topic) != null
  * The topic to report to, or null when there is none and the user has to supply one.
  *
  * The build-time topic wins: it is the maintainer's own, compiled in from `local.properties`.
- * A stored topic is the fallback for a build that did not carry one.
+ * A stored topic is the fallback for a build that did not carry one. A topic that is not
+ * *usable* is ignored rather than kept, so a typo in `local.properties` cannot lock the
+ * feature with no way to fix it — the panel simply asks for a topic instead.
  */
 fun resolveReportTopic(buildTopic: String, storedTopic: String): String? {
     val build = buildTopic.trim()
-    if (build.isNotEmpty()) return build
+    if (isValidTopic(build)) return build
     val stored = storedTopic.trim()
-    if (stored.isNotEmpty()) return stored
+    if (isValidTopic(stored)) return stored
     return null
 }
 
@@ -96,11 +98,12 @@ fun reportFailureReason(code: Int): String? = when {
  *
  * Both checks happen here so that a bad topic or an empty description never reaches the
  * network: the first would put an unvalidated path segment on a remote server, and the
- * second would post an empty notification.
+ * second would post an empty notification. The description is checked, not the assembled
+ * body — the body always carries the diagnostics, so a body check would never fire.
  */
-fun reportPreflightFailure(topic: String, body: String): String? = when {
+fun reportPreflightFailure(topic: String, description: String): String? = when {
     ntfyTopicUrl(topic) == null -> "The topic name is not valid."
-    body.isBlank() -> "Describe the problem first."
+    description.isBlank() -> "Describe the problem first."
     else -> null
 }
 
@@ -125,16 +128,20 @@ object ProblemReporter {
     suspend fun send(
         topic: String,
         title: String,
-        body: String,
+        description: String,
+        details: String?,
     ): ReportOutcome = withContext(Dispatchers.IO) {
-        // Both checks happen before anything touches the network: an unvalidated topic would
-        // put an arbitrary path segment on a remote server, and an empty body would post an
-        // empty notification.
-        reportPreflightFailure(topic, body)?.let { return@withContext ReportOutcome.Failed(it) }
+        // Both checks happen before anything touches the network: an unvalidated topic would put
+        // an arbitrary path segment on a remote server, and an empty description would post a
+        // notification with nothing in it.
+        reportPreflightFailure(topic, description)?.let {
+            return@withContext ReportOutcome.Failed(it)
+        }
 
         val url = ntfyTopicUrl(topic) ?: return@withContext ReportOutcome.Failed(
             "The topic name is not valid."
         )
+        val body = buildReportBody(description, details)
 
         var connection: HttpURLConnection? = null
         try {

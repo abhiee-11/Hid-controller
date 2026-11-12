@@ -166,6 +166,9 @@ class MainActivity : ComponentActivity() {
                     val pairedProfile by manager.pairedProfile.collectAsState()
                     GamepadScreen(
                         statusText = if (hidEnabled) statusLabel(status) else "HID off — turn the switch on to enable",
+                        // The state word, without the host's name: the report travels to a
+                        // public server and must not carry another device's identity.
+                        hidState = if (hidEnabled) hidStateWord(status) else "off",
                         bondedDevices = { manager.bondedDevices() },
                         onConnect = { device: android.bluetooth.BluetoothDevice -> manager.connect(device) },
                         onDiscoverable = {

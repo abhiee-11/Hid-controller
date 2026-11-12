@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -73,7 +75,18 @@ fun TutorialPanel(
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .background(colors.background),
+            .background(colors.background)
+            // The app is landscape-locked and this device has a 67 px cutout on the left:
+            // without this the "Skip" button sits under it.
+            .safeDrawingPadding()
+            // Modal: the controller underneath must not see touches meant for the tutorial.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent().changes.forEach { it.consume() }
+                    }
+                }
+            },
     ) {
         val wide = maxWidth >= 600.dp
         val contentWidth = if (wide) 680.dp else maxWidth
@@ -88,8 +101,9 @@ fun TutorialPanel(
             // ---- header: skip is always reachable -------------------------------
             Row(
                 Modifier
-                    .fillMaxWidth()
+                    
                     .widthIn(max = contentWidth)
+                    .fillMaxWidth()
                     .align(Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -106,8 +120,9 @@ fun TutorialPanel(
             // ---- progress --------------------------------------------------------
             Column(
                 Modifier
-                    .fillMaxWidth()
+                    
                     .widthIn(max = contentWidth)
+                    .fillMaxWidth()
                     .align(Alignment.CenterHorizontally),
             ) {
                 Text(
@@ -136,8 +151,9 @@ fun TutorialPanel(
             // ---- the step --------------------------------------------------------
             Row(
                 Modifier
-                    .fillMaxWidth()
+                    
                     .widthIn(max = contentWidth)
+                    .fillMaxWidth()
                     .align(Alignment.CenterHorizontally),
                 horizontalArrangement = Arrangement.spacedBy(20.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -316,8 +332,9 @@ fun TutorialPanel(
             // ---- footer: back and next ------------------------------------------
             Row(
                 Modifier
-                    .fillMaxWidth()
+                    
                     .widthIn(max = contentWidth)
+                    .fillMaxWidth()
                     .align(Alignment.CenterHorizontally),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,

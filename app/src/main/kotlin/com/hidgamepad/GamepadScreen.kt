@@ -31,6 +31,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,6 +112,7 @@ fun profileLabel(profile: HidProfile): String = when (profile) {
 @Composable
 fun GamepadScreen(
     statusText: String,
+    hidState: String = "unknown",
     bondedDevices: () -> List<BluetoothDevice>,
     onConnect: (BluetoothDevice) -> Boolean,
     onDiscoverable: () -> Unit,
@@ -140,6 +142,9 @@ fun GamepadScreen(
     }
     var onboardingStep by remember { mutableStateOf(TutorialStep.start) }
     var modeNotice by remember { mutableStateOf("") }
+    // The report's send runs in this scope, not the panel's, so closing the panel while a
+    // report is on the wire does not cancel it.
+    val reportScope = rememberCoroutineScope()
     if (needsSetup) {
         TutorialPanel(
             hostType = hostType,
@@ -515,16 +520,20 @@ fun GamepadScreen(
     }
     if (reportOpen) {
         ReportProblemPanel(
-            onClose = { reportOpen = false },
+            // Back to Settings: that is where the report was filed from.
+            onClose = { reportOpen = false; settingsOpen = true },
             controllerMode = controllerMode,
             hostType = hostType,
-            hidStatus = statusText,
-            currentScreenLabel = modeLabel(controllerMode),
+            // The state word, not the status line: the status line names the host, and a
+            // report travels to a public server.
+            hidState = hidState,
+            currentScreenLabel = "Settings",
             knownTopic = resolveReportTopic(
                 BuildConfig.NTFY_TOPIC,
                 prefs.getString("report_topic", "") ?: "",
             ),
             tiltOn = tiltOn,
+            scope = reportScope,
             onTopicSaved = { topic -> prefs.edit().putString("report_topic", topic).apply() },
         )
     }
@@ -565,7 +574,7 @@ private fun SettingsPanel(
     onClearInputs: () -> Unit,
 ) {
     val profile = profileForHostType(hostType)
-    Box(Modifier.fillMaxSize().background(Color(0xFF1A1B21))) {
+    Box(Modifier.fillMaxSize().background(Color(0xFF1A1B21)).safeDrawingPadding()) {
     Column(
         // Capped and centred on a wide screen so the settings do not stretch across a
         // tablet; a compact screen gets the whole width.

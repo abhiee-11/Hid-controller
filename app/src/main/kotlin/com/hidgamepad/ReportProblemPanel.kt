@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -23,16 +25,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /**
@@ -42,26 +45,31 @@ import kotlinx.coroutines.launch
  * attached to every report automatically and are deliberately **not** shown — the point of
  * them is that the person filing the report should not have to know or care what they are.
  *
- * The layout adapts to the window it is given: on a compact screen the content fills the
- * width, on a tablet or a wide window it is capped and centred so the text field does not
- * stretch across a desk. The description field grows with the height it is given.
+ * The panel adapts to the window it is given: on a compact screen the content fills the width,
+ * on a tablet or a wide window it is capped and centred so the text field does not stretch
+ * across a desk. The description field grows with the height it is given.
+ *
+ * It is a **modal** surface: it consumes every touch that reaches it, so a stray tap cannot
+ * move the on-screen stick underneath it and send the host phantom input.
  *
  * @param knownTopic the topic the app already knows, or null when there is none and the user
  *   has to supply one. The topic field is only shown when it is null.
+ * @param scope the scope the send runs in. It is the caller's, not the panel's, so a report that
+ *   is already on the wire is not cancelled by closing the panel.
  */
 @Composable
 fun ReportProblemPanel(
     onClose: () -> Unit,
     controllerMode: ControllerMode,
     hostType: HostType,
-    hidStatus: String,
+    hidState: String,
     currentScreenLabel: String,
     knownTopic: String?,
     tiltOn: Boolean,
+    scope: CoroutineScope,
     onTopicSaved: (String) -> Unit,
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     var description by remember { mutableStateOf("") }
     var topic by remember { mutableStateOf(knownTopic ?: "") }
@@ -81,18 +89,17 @@ fun ReportProblemPanel(
                     screenLabel = currentScreenLabel,
                     mode = controllerMode,
                     hostType = hostType,
-                    hidStatus = hidStatus,
+                    hidStatus = hidState,
                     tiltOn = tiltOn,
                 )
             }
-            val body = buildReportBody(description, details)
-            when (val outcome = ProblemReporter.send(useTopic, REPORT_TITLE, body)) {
+            when (val outcome = ProblemReporter.send(useTopic, REPORT_TITLE, description, details)) {
                 is ReportOutcome.Sent -> {
-                    // The report goes to the app's maintainer, not to the person who sent
-                    // it — "check your phone" would be wrong in a published app.
                     result = "Report sent. Thank you."
                     failed = false
-                    onTopicSaved(useTopic)
+                    // Only a topic the user typed is worth remembering; the build-time one is
+                    // already in the app and has no business being copied into storage.
+                    if (knownTopic == null) onTopicSaved(useTopic)
                 }
                 is ReportOutcome.Failed -> {
                     result = outcome.reason
@@ -106,8 +113,18 @@ fun ReportProblemPanel(
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
-            .background(Color(0xFF1A1B21))
-            .padding(16.dp),
+            .background(Color(0xFF141519))
+            .safeDrawingPadding()
+            .padding(16.dp)
+            // Modal: swallow anything that gets past the fields and the buttons, so the
+            // controller underneath does not see it.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent().changes.forEach { it.consume() }
+                    }
+                }
+            },
     ) {
         // A wide window gets a capped, centred column; a compact one gets everything.
         val contentWidth: Dp = if (maxWidth >= 600.dp) 640.dp else maxWidth
@@ -121,8 +138,8 @@ fun ReportProblemPanel(
         ) {
             Column(
                 Modifier
-                    .fillMaxWidth()
                     .widthIn(max = contentWidth)
+                    .fillMaxWidth()
                     .align(Alignment.CenterHorizontally),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {

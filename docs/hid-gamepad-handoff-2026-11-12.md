@@ -13,7 +13,7 @@ Pick this up tomorrow. Everything below is measured, not inferred, unless marked
   carried, and they were the only commits in the repo still holding the raw device serials.
   `main`'s history now contains none.
 - Build + tests: `.\gradlew.bat --console=plain testDebugUnitTest assembleDebug`
-  → **179 tests, 0 failures**.
+  → **182 tests, 0 failures**.
 - **The app has a "Report a problem" feature and a redesigned first-use tutorial** (see the
   sections below). The tutorial is once-only and replayable from Settings → Getting started.
   The app stays landscape-locked.
@@ -159,8 +159,13 @@ automatically and are **not** shown to the person reporting.
 
 **Verified on the phone (2026-11-12):** the button is the third row of the Settings sheet,
 under the master switch; a real report was sent and read back from the topic with the body
-above; with Wi-Fi and mobile data off the panel reported *"No connection to the ntfy server.
-Check the phone's internet connection."*
+above; and with the phone's Wi-Fi and mobile data switched off the panel reported the
+connection message instead of claiming success.
+
+**The HID state is reported as a plain word** (`registered`, `connected`, …), never as the
+status line: the status line names the host, and the host's Bluetooth name — or its MAC
+address, when it has no friendly name — is somebody else's device and must not travel to a
+public server.
 
 Two defects were found by that device check and fixed:
 
@@ -174,7 +179,7 @@ Two defects were found by that device check and fixed:
 **Permission added:** `android.permission.INTERNET` — the only permission change. The HID
 layer is untouched: no descriptor, no encoder, no button bit, no gesture threshold.
 
-Suite after this feature: **170 tests, 0 failures**.
+Suite after this feature: **182 tests, 0 failures**.
 
 ## First-run tutorial (commit `dbcb999`)
 
@@ -215,7 +220,7 @@ held input (onPause) and re-register the HID device mid-game.
 "Start using the app" all behave; and with `setup_complete=true` the tutorial does not
 reappear even though `last_host_address` was removed.
 
-Suite after this feature: **179 tests, 0 failures**.
+Suite after this feature: **182 tests, 0 failures**.
 
 ## Verified on the tablet (composite profile)
 

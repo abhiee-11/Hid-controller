@@ -55,7 +55,10 @@ fun collectDeviceScreenInfo(activity: Activity): DeviceScreenInfo {
     val cutout = insets?.displayCutout
 
     val cornerRadius = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        runCatching { insets?.getRoundedCorner(0)?.radius ?: 0 }.getOrDefault(0)
+        // Any corner can carry the radius; the largest one is the device's.
+        runCatching {
+            (0..3).mapNotNull { insets?.getRoundedCorner(it)?.radius }.maxOrNull() ?: 0
+        }.getOrDefault(0)
     } else {
         0
     }
@@ -89,8 +92,8 @@ fun collectDeviceScreenInfo(activity: Activity): DeviceScreenInfo {
         theme = if (configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
             Configuration.UI_MODE_NIGHT_YES
         ) "dark" else "light",
-        manufacturer = Build.MANUFACTURER ?: "unknown",
-        model = Build.MODEL ?: "unknown",
+        manufacturer = Build.MANUFACTURER,
+        model = Build.MODEL,
         androidRelease = Build.VERSION.RELEASE ?: "unknown",
         sdkInt = Build.VERSION.SDK_INT,
         appVersion = runCatching {
@@ -133,16 +136,10 @@ fun DeviceScreenInfo.toDetailsBlock(
     appendLine("App")
     appendLine("  HID Controller $appVersion")
     appendLine("  Screen         $screenLabel")
-    appendLine("  Mode           ${modeName(mode)}")
-    appendLine("  Host type      ${hostName(hostType)}")
+    appendLine("  Mode           ${modeLabel(mode)}")
+    appendLine("  Host type      ${hostTitle(hostType)}")
     appendLine("  HID            $hidStatus")
     appendLine("  Tilt           ${if (tiltOn) "on" else "off"}")
-}
-
-private fun modeName(mode: ControllerMode): String = when (mode) {
-    ControllerMode.GAMEPAD -> "Gamepad"
-    ControllerMode.MOUSE -> "Mouse"
-    ControllerMode.KEYBOARD -> "Keyboard"
 }
 
 /**
@@ -157,7 +154,3 @@ private fun windowSizeClass(widthDp: Int): String = when {
     else -> "expanded"
 }
 
-private fun hostName(type: HostType): String = when (type) {
-    HostType.WINDOWS -> "Windows PC"
-    HostType.ANDROID -> "Android device"
-}
