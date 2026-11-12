@@ -111,6 +111,46 @@ True pinch is not possible over a 5-byte relative mouse report, so "pinch" is Ct
 both hosts. A 40 ms hold separates each press from its release so a host cannot coalesce
 the pair.
 
+## Reporting a problem
+
+The Settings sheet has a **Report a problem** button, directly under the HID master switch.
+
+Type what went wrong and press **Send report**. The report arrives as an ntfy push
+notification on the maintainer's phone, together with the device and screen details needed to
+diagnose it:
+
+```
+Screen
+  Window        858 x 384 dp (landscape)
+  Display       1608 x 720 px, 300 dpi (1.875x)
+  Smallest w    384 dp
+  Width class   expanded
+  Refresh rate  60 Hz
+  Cutout        yes — 67 px left inset
+  Corners       47 px radius
+  Theme         dark
+
+Device
+  vivo V2434
+  Android 16 (SDK 36)
+
+App
+  HID Controller 1.1
+  Screen         Mouse
+  Mode           Mouse
+  Host type      Android device
+  HID            Connected: ABHISKAR
+  Tilt           off
+```
+
+Those details are attached to every report automatically and are never shown to the person
+reporting — they are there so the report is actionable without anyone having to describe
+their own screen. **No Bluetooth addresses and no paired-device names are included.**
+
+The ntfy topic is the maintainer's own and is compiled into the app from
+`local.properties` (`ntfy.topic=…`), which is git-ignored: it never enters the repository.
+A build without that property asks the user for a topic instead.
+
 ## Project layout
 
 ```
@@ -125,6 +165,9 @@ app/src/main/kotlin/com/hidgamepad/
   GestureTouchpad.kt    Compose pad: pointer frames, ticker, virtual cursor
   GamepadScreen.kt      Setup wizard, mode selector, settings, gamepad/mouse/keyboard UI
   Joystick.kt           Multi-touch stick, D-pad, buttons, pedals, and keyboard keys
+  ProblemReport.kt      ntfy report: topic validation, message body, HTTPS publish
+  DeviceScreenInfo.kt   Device and screen facts attached to a report
+  ReportProblemPanel.kt The report-a-problem screen
   MainActivity.kt       Permissions, immersive mode, app lifecycle
 ```
 

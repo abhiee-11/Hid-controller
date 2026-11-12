@@ -113,6 +113,66 @@ still down.
 
 The descriptor is unchanged, so no host needs to re-pair. Suite: **143 tests, 0 failures**.
 
+## Report a problem (ntfy)
+
+A "Report a problem" button sits in the Settings sheet, directly under the HID master
+switch. The user types what went wrong and presses **Send report**; the message is published
+to an ntfy topic and arrives as a push notification on the maintainer's phone.
+
+**The topic never enters the repository.** It is read from `local.properties` (`ntfy.topic=…`,
+git-ignored) and compiled into `BuildConfig.NTFY_TOPIC`. A build without the property asks
+the user for a topic instead. The first implementation of Task 1's test used the maintainer's
+real topic as its example; the plan's own "the topic is in no tracked file" check caught it,
+and it was purged from the branch history with a fixup + autosquash rebase.
+
+**What a report contains.** The user's text, then the device and screen details:
+
+```
+Screen
+  Window        858 x 384 dp (landscape)
+  Display       1608 x 720 px, 300 dpi (1.875x)
+  Smallest w    384 dp
+  Width class   expanded
+  Refresh rate  60 Hz
+  Cutout        yes — 67 px left inset
+  Corners       47 px radius
+  Theme         dark
+
+Device
+  vivo V2434
+  Android 16 (SDK 36)
+
+App
+  HID Controller 1.1
+  Screen         Mouse
+  Mode           Mouse
+  Host type      Android device
+  HID            Connected: ABHISKAR
+  Tilt           off
+```
+
+No Bluetooth addresses and no bonded-device names are ever included. The details are attached
+automatically and are **not** shown to the person reporting.
+
+**Verified on the phone (2026-11-12):** the button is the third row of the Settings sheet,
+under the master switch; a real report was sent and read back from the topic with the body
+above; with Wi-Fi and mobile data off the panel reported *"No connection to the ntfy server.
+Check the phone's internet connection."*
+
+Two defects were found by that device check and fixed:
+
+- The cutout line read `yes — 0 px top inset`. The cutout is at the top in portrait and on a
+  *side* in landscape, so the top inset is zero while the cutout is still there. The detail
+  now names the edge the cutout is actually on (`67 px left inset`).
+- The success line read *"Sent — check your phone"*. The report goes to the app's
+  **maintainer**, not to whoever sent it, so that was wrong in a published app. It now reads
+  *"Report sent. Thank you."*
+
+**Permission added:** `android.permission.INTERNET` — the only permission change. The HID
+layer is untouched: no descriptor, no encoder, no button bit, no gesture threshold.
+
+Suite after this feature: **170 tests, 0 failures**.
+
 ## Verified on the tablet (composite profile)
 
 Tablet `<TABLET_SERIAL>`, gamepad node `/dev/input/event8` ("vivo Y29"). `event6` = keyboard,
