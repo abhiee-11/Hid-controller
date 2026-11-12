@@ -195,7 +195,10 @@ fun DPadControl(
         ) {
             val half = size.width / 2f
             val arm = half
-            val thick = minOf(DPAD_ARM_WIDTH.toPx(), size.width * 0.42f)
+            val thick = minOf(
+                maxOf(DPAD_ARM_WIDTH.toPx(), size.width * 0.20f),
+                size.width * 0.42f,
+            )
             val corner = CornerRadius(DPAD_CORNER.toPx(), DPAD_CORNER.toPx())
             drawRoundRect(
                 PadColors.surface,
@@ -249,8 +252,9 @@ private fun heldCardinals(zones: Collection<Int>): Set<Int> {
 
 /** Small direction triangles at the tip of each arm, brightened when that direction is held. */
 private fun DrawScope.drawTriangles(half: Float, thick: Float, held: Set<Int>) {
-    val t = 5f.dp.toPx()
-    val margin = 4f.dp.toPx()
+    // The triangle scales with the arm it sits in, so it never spills out of it.
+    val t = (thick * 0.35f).coerceAtLeast(5f.dp.toPx())
+    val margin = t * 0.6f
     val d = half - t - margin
     if (d <= 0f) return
     fun shade(zone: Int) = if (zone in held) PadColors.accent else PadColors.secondary

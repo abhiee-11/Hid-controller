@@ -48,6 +48,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -505,7 +506,14 @@ private fun PadTopBar(
                         .background(dotColor, CircleShape),
                 )
                 Spacer(Modifier.width(6.dp))
-                Text(statusText, fontSize = 11.sp, color = PadColors.secondary, maxLines = 1)
+                Text(
+                    statusText,
+                    fontSize = 11.sp,
+                    color = PadColors.secondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
             }
         }
         Row(
@@ -552,26 +560,31 @@ private fun GamepadStage(
     hapticsStrength: Float,
     modifier: Modifier = Modifier,
 ) {
-    val shoulderWidth = 100.dp
-    val triggerHeight = 40.dp
+    val shoulderWidth = 108.dp
+    val triggerHeight = 44.dp
     val bumperHeight = 30.dp
     val shoulderGap = 6.dp
     val shoulderBlock = triggerHeight + shoulderGap + bumperHeight
-    val faceSize = 40.dp
+    val faceSize = 64.dp
     val abxy = faceSize * 3f
-    val dpadStickGap = 16.dp
-    val stickFaceGap = 20.dp
-    val centrePillWidth = 72.dp
-    val centrePillHeight = 26.dp
+    // The widest the D-pad may get, so the sticks always have room.
+    val maxDpad = 150.dp
+    // The field spreads the D-pad, the two sticks and the face diamond with equal gaps,
+    // never closer together than this.
+    val minFieldGap = 24.dp
+    val centrePillWidth = 84.dp
+    val centrePillHeight = 30.dp
     val fieldGap = 12.dp
 
     BoxWithConstraints(modifier.fillMaxSize()) {
         val stageW = maxWidth
         val stageH = maxHeight
-        // The stick size is bounded by both axes, so the field always fits.
-        val stickByWidth = (stageW - dpadStickGap - stickFaceGap - abxy) / 3f
+        // The stick size is bounded by both axes: by the height left under the shoulders, and
+        // by the width the D-pad, the three gaps and the face diamond leave behind.
         val stickByHeight = stageH - shoulderBlock - fieldGap
-        val stick = minOf(stickByWidth, stickByHeight).coerceAtMost(110.dp).coerceAtLeast(56.dp)
+        val stickByWidth = (stageW - maxDpad - abxy - minFieldGap * 3f) / 2f
+        val stick = minOf(stickByWidth, stickByHeight).coerceIn(56.dp, 190.dp)
+        val dpad = (stick * 0.72f).coerceIn(96.dp, maxDpad)
 
         Column(Modifier.fillMaxSize()) {
             // Shoulders and the centre pills.
@@ -630,17 +643,18 @@ private fun GamepadStage(
                 }
             }
             Spacer(Modifier.height(fieldGap))
-            // The playing field.
+            // The playing field. Equal gaps between the four controls, so the two sticks sit
+            // close together instead of leaving a hole in the middle of the screen.
             Row(
-                Modifier.fillMaxWidth().weight(1f),
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
                 verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                DPadControl(stick, onHat = { model.hat = it })
-                Spacer(Modifier.width(dpadStickGap))
+                DPadControl(dpad, onHat = { model.hat = it })
                 JoystickControl(stick) { x, y -> model.touchLx = x; model.ly = y }
-                Spacer(Modifier.weight(1f))
                 JoystickControl(stick) { x, y -> model.rx = x; model.ry = y }
-                Spacer(Modifier.width(stickFaceGap))
                 Box(Modifier.size(abxy)) {
                     GamepadButton("Y", faceSize, PadColors.faceY, hapticsEnabled, hapticsStrength, { model.down(Btn.Y) }, { model.up(Btn.Y) }, Modifier.align(Alignment.TopCenter))
                     GamepadButton("X", faceSize, PadColors.faceX, hapticsEnabled, hapticsStrength, { model.down(Btn.X) }, { model.up(Btn.X) }, Modifier.align(Alignment.CenterStart))
