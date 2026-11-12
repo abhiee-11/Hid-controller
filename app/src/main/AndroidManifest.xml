@@ -12,6 +12,9 @@
         tools:targetApi="34" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Needed only to publish a problem report to ntfy; the controller itself is Bluetooth-only. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:label="HID Controller"
         android:supportsRtl="true"
