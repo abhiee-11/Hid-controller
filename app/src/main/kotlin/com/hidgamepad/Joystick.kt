@@ -235,26 +235,22 @@ private fun combineHats(values: Collection<Int>): Int = when {
 }
 
 /**
- * Analog slide pedal (L2 / R2): a vertical strip whose value is set by how far the
- * finger has travelled along it — top = released (0), bottom = full press (1) — with a
- * smooth linear ramp between [PEDAL_RAMP_START] and [PEDAL_RAMP_END] of the strip so the
- * very edges feel like a physical trigger's dead travel. The value returns to 0 on
- * release, touch cancel, or the widget leaving composition. Each pressed pointer is
- * tracked individually (multi-touch safe) and the pedals use [combinePedal] semantics:
- * the deepest pressed finger wins, and other on-screen controls are untouched.
+ * Digital trigger (L2 / R2): a vertical strip that is either pressed or released.
+ *
+ * The phone screen cannot feel travel, so the trigger gives no half presses: a touch
+ * anywhere on the strip is a full pull (1) and lifting the finger releases it (0). The
+ * touch position is deliberately ignored — mapping it to a ramp put the "R2" label, which
+ * is centred in the strip, at exactly half travel, and a host that thresholds the
+ * trigger read that as "not pressed". The value returns to 0 on release, touch cancel, or
+ * the widget leaving composition. Each pressed pointer is tracked individually (multi-touch
+ * safe) and the pedals use [combinePedal] semantics: the pedal stays pressed while any
+ * finger is on it, and other on-screen controls are untouched.
  */
-const val PEDAL_RAMP_START = 0.1f
-const val PEDAL_RAMP_END = 0.9f
 
-/** Normalised position along the pedal track (0 = top/released, 1 = bottom/full) -> 0..1. */
-fun pedalValue(yNorm: Float): Float {
-    val y = yNorm.coerceIn(0f, 1f)
-    if (y <= PEDAL_RAMP_START) return 0f
-    if (y >= PEDAL_RAMP_END) return 1f
-    return (y - PEDAL_RAMP_START) / (PEDAL_RAMP_END - PEDAL_RAMP_START)
-}
+/** The value a pressed pedal reports: a full pull. */
+fun pedalValue(pressed: Boolean): Float = if (pressed) 1f else 0f
 
-/** One pressed finger's value per pointer; the combined pedal value is the deepest of them. */
+/** One pressed finger's value per pointer; the pedal is pressed while any of them is. */
 fun combinePedal(values: Collection<Float>): Float = values.maxOrNull() ?: 0f
 
 @Composable
@@ -281,9 +277,9 @@ fun PedalControl(
                                 var changed = false
                                 for (c in event.changes) {
                                     if (c.pressed) {
-                                        // Guard against a zero-height first layout frame.
-                                        val track = size.height.coerceAtLeast(1).toFloat()
-                                        val v = pedalValue(c.position.y / track)
+                                        // The trigger is digital: where on the strip the
+                                        // finger landed does not change the value.
+                                        val v = pedalValue(pressed = true)
                                         if (values[c.id.value] != v) {
                                             values[c.id.value] = v
                                             changed = true
