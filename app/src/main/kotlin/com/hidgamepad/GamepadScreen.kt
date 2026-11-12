@@ -244,6 +244,7 @@ fun GamepadScreen(
     }
 
     var settingsOpen by remember { mutableStateOf(false) }
+    var reportOpen by remember { mutableStateOf(false) }
 
     var devicesOpen by remember { mutableStateOf(false) }
     var deviceList by remember { mutableStateOf<List<BluetoothDevice>>(emptyList()) }
@@ -450,7 +451,7 @@ fun GamepadScreen(
             }
         }
     }
-    if (settingsOpen) {
+    if (settingsOpen && !reportOpen) {
             SettingsPanel(
                 statusText = statusText,
                 hostType = hostType,
@@ -471,6 +472,7 @@ fun GamepadScreen(
                 onChangeDevice = { settingsOpen = false; devicesOpen = true },
                 onDiscoverable = onDiscoverable,
                 onRunSetup = { settingsOpen = false; onboardingStep = 1; needsSetup = true },
+                onReportProblem = { settingsOpen = false; reportOpen = true },
                 onMode = { switchMode(it) },
                 onHostType = { newType ->
                     hostType = newType
@@ -504,6 +506,21 @@ fun GamepadScreen(
                 onClearInputs = { resetLocalInputs(); onReleaseAllInputs() },
             )
         }
+    }
+    if (reportOpen) {
+        ReportProblemPanel(
+            onClose = { reportOpen = false },
+            controllerMode = controllerMode,
+            hostType = hostType,
+            hidStatus = statusText,
+            currentScreenLabel = modeLabel(controllerMode),
+            knownTopic = resolveReportTopic(
+                BuildConfig.NTFY_TOPIC,
+                prefs.getString("report_topic", "") ?: "",
+            ),
+            tiltOn = tiltOn,
+            onTopicSaved = { topic -> prefs.edit().putString("report_topic", topic).apply() },
+        )
     }
 }
 
@@ -600,6 +617,7 @@ private fun SettingsPanel(
     onChangeDevice: () -> Unit,
     onDiscoverable: () -> Unit,
     onRunSetup: () -> Unit,
+    onReportProblem: () -> Unit,
     onMode: (ControllerMode) -> Unit,
     onHostType: (HostType) -> Unit,
     registeredProfile: HidProfile,
@@ -634,6 +652,13 @@ private fun SettingsPanel(
             )
             Switch(checked = hidEnabled, onCheckedChange = onHidEnabledChange)
         }
+        // Reporting a problem sits directly under the master switch: it is the one action a
+        // user reaches for when something is not working, and it should not be buried at the
+        // bottom of a long sheet.
+        Button(
+            onClick = onReportProblem,
+            modifier = Modifier.fillMaxWidth().height(48.dp),
+        ) { Text("Report a problem") }
         Text(
             "Off releases every input, unregisters the HID device and removes the notification. " +
                 "Phone Bluetooth and other Bluetooth connections are unaffected.",

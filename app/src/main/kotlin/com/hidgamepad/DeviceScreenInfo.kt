@@ -110,6 +110,7 @@ fun DeviceScreenInfo.toDetailsBlock(
     appendLine("  Window        $windowWidthDp x $windowHeightDp dp ($orientation)")
     appendLine("  Display       $displayWidthPx x $displayHeightPx px, $densityDpi dpi ($densityScale" + "x)")
     appendLine("  Smallest w    $smallestWidthDp dp")
+    appendLine("  Width class   ${windowSizeClass(windowWidthDp)}")
     appendLine("  Refresh rate  $refreshRateHz Hz")
     appendLine(
         if (hasCutout) "  Cutout        yes — $cutoutTopPx px top inset" else "  Cutout        no"
@@ -136,6 +137,18 @@ private fun modeName(mode: ControllerMode): String = when (mode) {
     ControllerMode.GAMEPAD -> "Gamepad"
     ControllerMode.MOUSE -> "Mouse"
     ControllerMode.KEYBOARD -> "Keyboard"
+}
+
+/**
+ * The window width class, using the standard breakpoints.
+ *
+ * A layout bug usually depends on which bucket the window fell into, not on the raw pixel
+ * count — the app lays out differently for a compact window than for an expanded one.
+ */
+private fun windowSizeClass(widthDp: Int): String = when {
+    widthDp < 600 -> "compact"
+    widthDp < 840 -> "medium"
+    else -> "expanded"
 }
 
 private fun hostName(type: HostType): String = when (type) {

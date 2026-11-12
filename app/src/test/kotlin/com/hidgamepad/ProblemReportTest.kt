@@ -203,6 +203,7 @@ class ProblemReportTest {
         assertTrue(block.contains("HID Controller 1.1"))
         assertTrue(block.contains("Windows PC"))
         assertTrue(block.contains("Registered"))
+        assertTrue(block.contains("Width class   expanded"))
     }
 
     @Test
@@ -221,5 +222,6 @@ class ProblemReportTest {
         assertTrue(block.contains("Pixel 8"))
         assertTrue(block.contains("Android device"))
         assertTrue(block.contains("Tilt           on"))
+        assertTrue(block.contains("Width class   compact"))
     }
 }
