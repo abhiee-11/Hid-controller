@@ -28,14 +28,19 @@ are on screen.
 - Works with the pending Back-navigation work: Back from a sub-page returns to
   the list; Back from the list closes Settings.
 
+This change also adds the **mouse pad RGB glow** (see its own section below),
+which lives on the RGB backlight page.
+
 ## Non-goals / anti-goals
 
 - No change to HID, descriptors, report encoding, connection handling, modes,
-  settings persistence, input sending, or any control's press/release behaviour.
+  input sending, or any control's press/release behaviour.
 - No new colours outside `PadColors`; no new screens/activities.
 - Not adding the typing-sound feature here (still an open, separate idea).
 - Anti-goal: losing a control or its state while moving it. Every row on every
   page must map 1:1 to something that exists today.
+- Anti-goal: the pad glow must never affect the touchpad's gestures, sensitivity
+  or mouse sending. It is a border decoration only.
 
 ## Approaches considered
 
@@ -73,10 +78,48 @@ are on screen.
 **RGB backlight page**
 - Everything currently under the "RGB backlight" heading, verbatim: on/off,
   effect pills, flow, speed, brightness, colour swatches, the shortcut hint.
+- Plus the **Mouse pad glow** group (below).
 
 **Information page**
 - HID status; Help / pairing instructions; Android compatibility note; the
   haptics-are-not-rumble note.
+
+## Mouse pad glow (fully independent settings)
+
+The touchpad shown in Mouse mode (`GestureTouchpad`) has a static grey 2px
+border today. The user wants that border to glow with RGB, controlled from the
+RGB backlight page, with **settings fully independent** of the keyboard's
+backlight.
+
+**Settings** (own group on the RGB backlight page, own prefs keys `pad_glow_*`):
+- ON/OFF
+- Effect, from a reduced set that makes sense on a loop: **Static**,
+  **Breathing**, **Color cycle**, **Rainbow**, **Reactive** (border brightens
+  while a finger is down on the pad).
+- Speed
+- Brightness
+- Colour swatches
+
+These are stored and applied separately from `rgb_*`, so the pad and the
+keyboard can run different effects, colours and brightnesses, and either can be
+on while the other is off.
+
+**Look**
+- The existing 2px border stays; a soft halo is drawn on both sides of it (light
+  spilling in and out), in the pad glow's colour and brightness.
+- Only in Mouse mode, since that is where the pad is.
+- Pad glow off ⇒ the border is exactly the grey it is today.
+
+**Engine**
+- Reuse the existing light engine's colour/brightness math; the loop effects map
+  to a position around the border's perimeter rather than to a key.
+- New `PadGlowConfig` data class + `pad_glow_*` persistence, mirroring
+  `RgbConfig`/`readStoredBrightness` (including the defensive Int-or-Float read).
+
+**Boundary**
+- The pad glow draws in `GestureTouchpad`'s Canvas; the pointer/gesture handling
+  in that composable is not touched. The glow needs only the current animation
+  colour, passed in as a parameter.
 
 **Navigation**
 - `settingsSection` lives inside `SettingsPanel`; the panel decides list vs page.
