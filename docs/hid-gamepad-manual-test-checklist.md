@@ -26,29 +26,35 @@ Host (tablet): any tablet that can pair to a Bluetooth HID gamepad
 
 ## HID profile and gamepad
 
-The app registers one of two HID profiles. **The host caches the descriptor at pairing
-time, so switching profiles requires removing the phone from the host's Bluetooth list and
-pairing it again.** A profile change without a re-pair has no effect on the host.
+The app registers one of two HID profiles, and the **host type picks which** — there is no
+separate profile to choose. **The host caches the descriptor at pairing time, so changing
+the host type requires removing the phone from the host's Bluetooth list and pairing it
+again.** A change without a re-pair has no effect on the host.
 
-| Profile | What it registers | Use it for |
+| Host type | Profile it registers | Why |
 |---|---|---|
-| Keyboard + mouse + gamepad | the 4-in-1 composite descriptor | the Android tablet; mouse + keyboard + gamepad over one link |
-| Gamepad only | a dedicated gamepad, W3C standard layout | **not recommended as-is** — measured worse than composite on the tablet's Chrome: X and R1 are dead (see the results table) |
+| Android phone or tablet | Keyboard + mouse + gamepad (4-in-1 composite) | Android's kernel maps gamepad buttons positionally, which is the composite's order |
+| Windows PC | Gamepad only (dedicated gamepad, 13-byte report) | Windows/DirectInput reads buttons by declaration order |
 
-| Profile | Action | Expected | Result |
+| Host type | Action | Expected | Result |
 |---|---|---|---|
-| Gamepad only | Chrome **on the tablet**: open a page that reads `navigator.getGamepads()` | one pad, 17 buttons, **6** axes | FAIL (2026-11-12): pad appears but `mapping: ""` and the index map is broken — A→0, B→1, Y→2, L1→3, SEL→6, START→7; **X and R1 produce no index at all** |
-| Gamepad only | Press A on the phone | the host sees one button press | PASS (2026-11-12): browser button index 0 |
-| Gamepad only | Move the right stick | the right stick moves on the host | PASS (2026-11-12): right stick → `axes[2]/axes[3]` |
-| Gamepad only | Press L2 / R2 on the phone | the host sees a trigger axis move | PASS (2026-11-12): L2 → `axes[4]`, R2 → `axes[5]` (rest `-1`, rises with the press) |
-| Composite | Re-pair the tablet | the tablet lists the phone as a gamepad | PASS (2026-11-11): `event8` "vivo Y29" with the full button/axis set |
-| Composite | Chrome **on the tablet**: open a page that reads `navigator.getGamepads()` | after one real tap, one pad, 17 buttons, 7 axes | PASS (2026-11-12): `mapping: ""`, near-W3C indices (A→0 … d-pad 12–15) |
-| Composite | Press A / move the left stick in the tablet's Chrome | button index 0 / axis 0 moves | PASS (2026-11-12) |
-| Composite | Press every on-screen control | the tablet reports the expected keycode | PASS (2026-11-11): see the "Analog outputs" list above, plus d-pad → `ABS_HAT0X/Y` |
-| Composite | Press MODE on the phone | the tablet reports `BUTTON_MODE` (316) | N/A — the gamepad screen has no MODE button |
+| Android | Re-pair the tablet | the tablet lists the phone as a gamepad (+ keyboard + mouse) | PASS (2026-11-12): re-paired device shows `KEYBOARD \| DPAD \| GAMEPAD \| MOUSE \| JOYSTICK`, X/Y/Z/RZ 8-bit + BRAKE/GAS |
+| Android | Chrome **on the tablet**: open a page that reads `navigator.getGamepads()` | after one real tap, one pad, 17 buttons, 7 axes | PASS (2026-11-12): `mapping: ""`, near-W3C indices (A→0 … d-pad 12–15) |
+| Android | Press A / move the left stick in the tablet's Chrome | button index 0 / axis 0 moves | PASS (2026-11-12) |
+| Android | Press every on-screen control | the tablet reports the expected keycode | PASS (2026-11-11): see the "Analog outputs" list above, plus d-pad → `ABS_HAT0X/Y` |
+| Windows | Select the Windows PC host type | the re-pair warning appears when it differs from the paired profile | PASS (2026-11-12): Android→needs repair, Windows→clears when it matches |
+| Windows | Re-pair a Windows PC, then open a game | the game sees a DirectInput gamepad | not yet measured — a Windows *game* is a manual check |
+
+**Before the host type drove the profile (when "Gamepad only" was a separate picker),** the
+tablet's Chrome measured Gamepad only as worse than composite: `id` without the "Keyboard"
+suffix, `mapping: ""`, `axes: 6`, `buttons: 17`, and **X and R1 produced no button index at
+all** — the kernel maps those wire bits to `BTN_C`/`BTN_Z`, which Chrome drops. The sticks and
+triggers worked (left `axes[0]/[1]`, right `axes[2]/[3]`, L2 `axes[4]`, R2 `axes[5]`). That is
+why an Android host now always gets the composite.
 
 Re-pair steps: on the host, remove the phone under Bluetooth settings; on the phone, tap
-**Make discoverable**; on the host, add the phone again while the app is open.
+**Make discoverable**; on the host, add the phone again while the app is open; then tap
+**I've re-paired the host** in the phone's Settings sheet.
 
 ## Mouse gestures (buttonless pad)
 

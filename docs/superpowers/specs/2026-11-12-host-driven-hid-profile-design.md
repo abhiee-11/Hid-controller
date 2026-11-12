@@ -1,7 +1,7 @@
 # Host-driven HID profile
 
 Date: 2026-11-12
-Status: awaiting approval
+Status: implemented (commit `3b24642`); device-verified on the tablet, see the handoff
 
 ## Intent
 

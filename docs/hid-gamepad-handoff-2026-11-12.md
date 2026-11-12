@@ -7,7 +7,14 @@ Pick this up tomorrow. Everything below is measured, not inferred, unless marked
 
 - Branch `feat/touchpad-gestures`, local only (never pushed), not merged.
 - Build + tests: `.\gradlew.bat --console=plain testDebugUnitTest assembleDebug`
-  → **143 tests, 0 failures**.
+  → **145 tests, 0 failures**.
+- **The HID profile now follows the host type** (approach A, commit `3b24642`): the separate
+  "HID profile" picker is gone. `profileForHostType` maps `ANDROID → COMPOSITE`,
+  `WINDOWS → GAMEPAD_ONLY`; `HidGamepadManager.loadStoredProfile()` derives from `host_type`
+  and the `hid_profile` pref is ignored (still present in old installs, harmless). Changing
+  the host type pushes the derived profile into the manager and re-registers; the re-pair
+  warning compares it with `paired_profile`. See
+  `docs/superpowers/specs/2026-11-12-host-driven-hid-profile-design.md`.
 - **Master HID on/off switch added** (Settings, top). Off releases every input, unregisters
   the HID device, stops `HidControllerService` and removes its notification; on starts it
   again and shows the notification only after registration succeeds. Persisted under
@@ -19,8 +26,38 @@ Pick this up tomorrow. Everything below is measured, not inferred, unless marked
   defeated because reports used the selected profile, not the host's (now a persisted
   `pairedProfile` drives both, cleared only by the new "I've re-paired the host" button). See
   "Review findings".
-- The phone app is on `hid_profile=COMPOSITE`, `controller_mode=GAMEPAD`, `hid_enabled=true`.
+- The phone app is on `host_type=ANDROID` (so it derives COMPOSITE), `controller_mode=GAMEPAD`,
+  `hid_enabled=true`, `paired_profile=COMPOSITE`.
 - Both hosts have re-paired and decode the current composite descriptor.
+
+## Host-driven HID profile (approach A, commit `3b24642`)
+
+The app used to ask two independent questions — Android vs Windows, and a HID profile — so
+"Android + Gamepad only" was reachable, and that combination is broken (see open item #1).
+Now the host type picks the profile: `profileForHostType` → `ANDROID = COMPOSITE`,
+`WINDOWS = GAMEPAD_ONLY`. `HidGamepadManager.loadStoredProfile()` derives from `host_type`;
+the `hid_profile` pref is ignored (left in place on old installs, harmless). The Settings
+"HID profile" picker is gone; changing the host type pushes the derived profile into the
+manager and re-registers, and the re-pair warning still compares it with `paired_profile`.
+
+Verified on the phone `<PHONE_SERIAL>` + tablet `<TABLET_SERIAL>` (2026-11-12):
+
+- Settings no longer shows a "HID profile" row; it shows the derived descriptor in the host-type
+  copy. Prefs showed `host_type=ANDROID` with a stale `hid_profile=GAMEPAD_ONLY`.
+- Switching host type to Windows PC cleared the re-pair warning (derived GAMEPAD_ONLY == paired
+  GAMEPAD_ONLY); switching back to Android showed it again (derived COMPOSITE != paired
+  GAMEPAD_ONLY). So the warning follows the derivation, not a stored picker.
+- The stale `hid_profile=GAMEPAD_ONLY` did **not** win: after re-pairing (tablet forgot the
+  phone, phone made discoverable, paired again) the tablet's `dumpsys input` showed one merged
+  node `Abhiskar's vivo Y29 Keyboard`, `Sources: KEYBOARD | DPAD | GAMEPAD | MOUSE | STYLUS |
+  JOYSTICK`, X/Y/Z/RZ 8-bit joystick axes plus `BRAKE`/`GAS` — i.e. the **composite** descriptor.
+  Before the re-pair the tablet still showed the cached GAMEPAD_ONLY layout (16-bit X/Y/RX/RY),
+  which is the expected "host caches the descriptor" behaviour.
+- Tapping **I've re-paired the host** cleared the warning and persisted `paired_profile=COMPOSITE`.
+
+Note: this phone's ROM suppresses the app's `Log.i` output entirely (even after
+`setprop log.tag.HidGamepad VERBOSE`), so logcat is not a usable evidence channel on it; the
+tablet's `dumpsys input` is.
 
 ## Verified on the tablet (composite profile)
 
@@ -84,48 +121,22 @@ Chrome 157 on the tablet (`<TABLET_SERIAL>`) **does** expose the phone to web pa
 
 ## Open items, in priority order
 
-1. **GAMEPAD_ONLY is host-verified (tablet browser) and it is worse than COMPOSITE.** After a
-   real re-pair (both bonds removed, re-paired from the tablet), Chrome 157 on the Lenovo Tab M11
-   fired `gamepadconnected` with `id: "Abhiskar's vivo Y29 (Vendor: 001d Product: 0000)"`
-   (no "Keyboard" suffix), `mapping: ""`, `axes: 6`, `buttons: 17`. It does **not** produce
-   `mapping: "standard"`. The button index map is broken (measured, one control at a time):
+1. **RESOLVED (2026-11-12) — the Android-host mismatch is gone by construction.** GAMEPAD_ONLY
+   measured worse than COMPOSITE on the tablet's Chrome: `id` had no "Keyboard" suffix,
+   `mapping: ""`, `axes: 6`, `buttons: 17`, and X and R1 produced no button index at all. The
+   kernel maps those wire bits to `BTN_C`/`BTN_Z`, which Chrome drops (root cause below). Instead
+   of reordering the buttons, the profile now follows the host: an Android host always gets
+   COMPOSITE, so the broken "Android + Gamepad only" combination is unreachable. See
+   "Host-driven HID profile" below.
 
-   | Control | Phone wire bit | Browser button index |
-   |---------|----------------|----------------------|
-   | A       | 0              | 0                    |
-   | B       | 1              | 1                    |
-   | X       | 2              | *(none — dead)*      |
-   | Y       | 3              | 2                    |
-   | L1      | 4              | 3                    |
-   | R1      | 5              | *(none — dead)*      |
-   | SEL     | 8              | 6                    |
-   | START   | 9              | 7                    |
-
-   X and R1 are dead: 12/12 snapshots while held showed no button index at all. The sticks and
-   triggers do work: left stick → `axes[0]/[1]`, right stick → `axes[2]/[3]`, L2 → `axes[4]`,
-   R2 → `axes[5]` (triggers rest at `-1` and rise with the press — Chrome normalises the
-   descriptor's unsigned 0..255 range to −1..+1, so a half press reads ≈0). So on this Android
-   host GAMEPAD_ONLY loses X and R1 versus COMPOSITE and gains nothing.
-
-   **Root cause (confirmed):** the Android kernel's `hid-input` maps the 16 HID Button usages of
-   a Gamepad collection positionally to Linux keycodes `BTN_A, BTN_B, BTN_C, BTN_X, BTN_Y,
-   BTN_Z, BTN_TL, BTN_TR, BTN_TL2, BTN_TR2, BTN_SELECT, BTN_START, …`. Chrome on Android then
-   builds its button list from those keycodes and has no entry for `BTN_C` or `BTN_Z`. So wire
-   bit 2 (Button 3) becomes `BTN_C` and wire bit 5 (Button 6) becomes `BTN_Z`, and both vanish.
-   This is exactly the `BTN_C`/`BTN_Z` gap predicted in #2. `w3cWireBit`'s W3C reordering
-   (X→bit 2, R1→bit 5) is what pushes the buttons onto those two slots, which is why COMPOSITE —
-   which emits Android's positional order — maps cleanly and GAMEPAD_ONLY does not.
-
-   Recommendation: keep COMPOSITE as the default; treat GAMEPAD_ONLY as experimental. If it is
-   kept, emit Android's positional order (drop the `w3cWireBit` reordering) so X/R1 land on
-   `BTN_X`/`BTN_TL` instead of `BTN_C`/`BTN_Z`.
-2. **The GAMEPAD_ONLY mismatch is confirmed on an Android/Chrome host — see the root cause in
-   #1.** `w3cWireBit` in `GamepadProfiles.kt` reorders the buttons to W3C order (X→wire 2,
-   Y→wire 3, L1→4, R1→5, SEL→8, START→9), but the Android kernel maps report bit position to
-   Linux keycodes in positional order, so wire bit 2 = `BTN_C` and wire bit 5 = `BTN_Z`, which
-   Chrome ignores. The fix, if GAMEPAD_ONLY is kept, is to emit Android's positional order for
-   that profile too (the reordering helps no Android host and only half-helps a browser, since
-   `mapping` stays `""` either way). Not decided — see #1's recommendation.
+   *Root cause, kept for the record:* the Android kernel's `hid-input` maps the 16 HID Button
+   usages of a Gamepad collection positionally to Linux keycodes `BTN_A, BTN_B, BTN_C, BTN_X,
+   BTN_Y, BTN_Z, BTN_TL, BTN_TR, …`. Chrome on Android builds its button list from those
+   keycodes and has no entry for `BTN_C` or `BTN_Z`, so wire bit 2 (Button 3) and wire bit 5
+   (Button 6) vanish. `w3cWireBit`'s reordering (X→bit 2, R1→bit 5) is what pushed buttons onto
+   those two slots; COMPOSITE emits Android's positional order and maps cleanly.
+2. **RESOLVED (2026-11-12) — same root cause as #1, addressed the same way.** `w3cWireBit` and
+   the GAMEPAD_ONLY encoder are unchanged; they are simply no longer used on an Android host.
 3. **MODE / L3 / R3 have no on-screen control**, so they cannot be pressed on any host.
    Their bits (12/13/14) are unit-test-only. Either add controls or accept the gap.
 4. **Windows games still need XInput** (VID `045E`), which a Bluetooth HID pad can never be.
