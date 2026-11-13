@@ -214,6 +214,17 @@ class GamepadStateTest {
     }
 
     @Test
+    fun `a deadzone covering the whole range returns zero instead of NaN`() {
+        // applySteering passes its deadzone through coerceIn(0f, 1f), so 1f is a value the
+        // shaping code can legitimately see. The formula divides by (1 - deadzone), which is
+        // 0/0 there: NaN would then reach the stick and the tilt path.
+        assertEquals(0f, applyDeadzone(1f, 1f), 0f)
+        assertEquals(0f, applyDeadzone(-1f, 1f), 0f)
+        assertEquals(0f, applyDeadzone(0.5f, 1f), 0f)
+        assertFalse("deadzone 1 produced NaN", applyDeadzone(0.5f, 1f).isNaN())
+    }
+
+    @Test
     fun `combined descriptor has four collections and report ids`() {
         assertTrue(COMBINED_HID_DESCRIPTOR[0] == 0x05.toByte() && COMBINED_HID_DESCRIPTOR[1] == 0x01.toByte())
         assertTrue(COMBINED_HID_DESCRIPTOR[2] == 0x09.toByte() && COMBINED_HID_DESCRIPTOR[3] == 0x06.toByte())
