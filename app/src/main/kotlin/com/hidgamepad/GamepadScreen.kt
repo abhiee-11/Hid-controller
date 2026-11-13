@@ -118,6 +118,7 @@ fun modeLabel(mode: ControllerMode): String = when (mode) {
     ControllerMode.GAMEPAD -> "Gamepad"
     ControllerMode.MOUSE -> "Mouse"
     ControllerMode.KEYBOARD -> "Keyboard"
+    ControllerMode.WASD -> "WASD"
 }
 
 private fun rgbEffectLabel(effect: RgbEffect): String = when (effect) {
@@ -543,6 +544,21 @@ fun GamepadScreen(
                         }
                     },
                     onFn = { fnHeld = it },
+                )
+            }
+            ControllerMode.WASD -> {
+                WasdStage(
+                    modifiers = keyboardModifiers,
+                    pressedKeys = keyboardKeys,
+                    hapticsEnabled = hapticsEnabled,
+                    hapticsStrength = hapticsStrength,
+                    onModifier = { bit, down ->
+                        keyboardModifiers = if (down) keyboardModifiers or bit else keyboardModifiers and bit.inv()
+                    },
+                    // No Fn layer here, so a press just adds or removes the usage.
+                    onKey = { usage, down ->
+                        keyboardKeys = if (down) keyboardKeys + usage else keyboardKeys - usage
+                    },
                 )
             }
         }
@@ -1397,5 +1413,142 @@ private fun KeyboardStage(
             }
         }
     }
+    }
+}
+
+/** One key on the WASD page: a press-and-hold target that reports while held. */
+@Composable
+private fun WasdKeyButton(
+    cap: KeyCap,
+    modifiers: Int,
+    pressedKeys: Set<Int>,
+    hapticsEnabled: Boolean,
+    hapticsStrength: Float,
+    onModifier: (Int, Boolean) -> Unit,
+    onKey: (Int, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val action = cap.action
+    val active = when (action) {
+        is KeyAction.Modifier -> (modifiers and action.bit) != 0
+        is KeyAction.Usage -> action.usage in pressedKeys
+        is KeyAction.Fn -> false
+    }
+    KeyboardKeyButton(
+        label = cap.label,
+        active = active,
+        hapticsEnabled = hapticsEnabled,
+        hapticsStrength = hapticsStrength,
+        onDown = {
+            when (action) {
+                is KeyAction.Modifier -> onModifier(action.bit, true)
+                is KeyAction.Usage -> onKey(action.usage, true)
+                is KeyAction.Fn -> Unit
+            }
+        },
+        onUp = {
+            when (action) {
+                is KeyAction.Modifier -> onModifier(action.bit, false)
+                is KeyAction.Usage -> onKey(action.usage, false)
+                is KeyAction.Fn -> Unit
+            }
+        },
+        modifier = modifier,
+    )
+}
+
+/** A thumb cluster: a column of equal-height rows, each row splitting its width across its keys. */
+@Composable
+private fun WasdCluster(
+    rows: List<List<KeyCap>>,
+    modifiers: Int,
+    pressedKeys: Set<Int>,
+    hapticsEnabled: Boolean,
+    hapticsStrength: Float,
+    onModifier: (Int, Boolean) -> Unit,
+    onKey: (Int, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        for (row in rows) {
+            Row(
+                Modifier.weight(1f).fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                for (cap in row) {
+                    WasdKeyButton(
+                        cap = cap,
+                        modifiers = modifiers,
+                        pressedKeys = pressedKeys,
+                        hapticsEnabled = hapticsEnabled,
+                        hapticsStrength = hapticsStrength,
+                        onModifier = onModifier,
+                        onKey = onKey,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WasdStage(
+    modifiers: Int,
+    pressedKeys: Set<Int>,
+    hapticsEnabled: Boolean,
+    hapticsStrength: Float,
+    onModifier: (Int, Boolean) -> Unit,
+    onKey: (Int, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val layout = wasdLayout()
+    Column(
+        modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(14.dp))
+            .background(RGB_DECK_COLOR)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        // Shoulder row: Tab on the left, Esc on the right, space between.
+        Row(Modifier.fillMaxWidth().weight(0.7f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WasdKeyButton(
+                cap = layout.shoulders[0], modifiers = modifiers, pressedKeys = pressedKeys,
+                hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
+                onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+            Spacer(Modifier.weight(2f))
+            WasdKeyButton(
+                cap = layout.shoulders[1], modifiers = modifiers, pressedKeys = pressedKeys,
+                hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
+                onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+        }
+        Row(Modifier.fillMaxWidth().weight(3f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            WasdCluster(
+                rows = layout.leftCluster, modifiers = modifiers, pressedKeys = pressedKeys,
+                hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
+                onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+            // Centre column: Enter on top, Space filling the rest as a wide bar.
+            Column(Modifier.weight(1.2f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                WasdKeyButton(
+                    cap = layout.centre[0], modifiers = modifiers, pressedKeys = pressedKeys,
+                    hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
+                    onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
+                WasdKeyButton(
+                    cap = layout.centre[1], modifiers = modifiers, pressedKeys = pressedKeys,
+                    hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
+                    onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(2f).fillMaxWidth(),
+                )
+            }
+            WasdCluster(
+                rows = layout.rightCluster, modifiers = modifiers, pressedKeys = pressedKeys,
+                hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
+                onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+        }
     }
 }

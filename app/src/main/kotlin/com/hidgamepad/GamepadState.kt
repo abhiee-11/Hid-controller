@@ -51,7 +51,7 @@ const val GAMEPAD_REPORT_SIZE = 9
  */
 const val KEYBOARD_USAGE_MAX = 0x65
 
-enum class ControllerMode { GAMEPAD, MOUSE, KEYBOARD }
+enum class ControllerMode { GAMEPAD, MOUSE, KEYBOARD, WASD }
 
 enum class HostType { WINDOWS, ANDROID }
 
