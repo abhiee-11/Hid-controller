@@ -61,7 +61,7 @@ fun keyboardRows(): List<List<KeyCap>> = listOf(
         cap("A", KeyUsage.A), cap("S", KeyUsage.S), cap("D", KeyUsage.D), cap("F", KeyUsage.F),
         cap("G", KeyUsage.G), cap("H", KeyUsage.H), cap("J", KeyUsage.J), cap("K", KeyUsage.K),
         cap("L", KeyUsage.L),
-        cap("Shift", KeyAction.Modifier(MOD_LEFT_SHIFT)),
+        cap("Shift", KeyAction.Modifier(MOD_RIGHT_SHIFT)),
     ),
     listOf(
         cap("Ctrl", KeyAction.Modifier(MOD_LEFT_CTRL)),

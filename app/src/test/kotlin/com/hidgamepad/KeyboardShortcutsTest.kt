@@ -72,6 +72,23 @@ class KeyboardShortcutsTest {
     }
 
     @Test
+    fun `each modifier bit belongs to exactly one key`() {
+        // Two keys sharing a bit would fight: the host reads one modifier byte, so releasing
+        // either key clears the bit even while the other is still held. The two Shift keys
+        // therefore own left and right shift, like a real keyboard.
+        val bits = keyboardRows().flatten().mapNotNull { (it.action as? KeyAction.Modifier)?.bit }
+        assertEquals(bits.size, bits.toSet().size)
+    }
+
+    @Test
+    fun `the two shift keys are left and right shift`() {
+        val shifts = keyboardRows().flatten()
+            .filter { it.label == "Shift" }
+            .map { (it.action as KeyAction.Modifier).bit }
+        assertEquals(listOf(MOD_LEFT_SHIFT, MOD_RIGHT_SHIFT), shifts)
+    }
+
+    @Test
     fun `the arrow keys are on the keyboard`() {
         val usages = keyboardRows().flatten().mapNotNull { (it.action as? KeyAction.Usage)?.usage }
         for (usage in listOf(KeyUsage.LEFT, KeyUsage.UP, KeyUsage.DOWN, KeyUsage.RIGHT)) {
