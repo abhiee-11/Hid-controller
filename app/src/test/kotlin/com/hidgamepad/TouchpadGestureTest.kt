@@ -239,6 +239,21 @@ class TouchpadGestureTest {
     }
 
     @Test
+    fun `three fingers splaying apart do not switch host`() {
+        // A splay moves the outer fingers a long way but leaves the hand where it was: the
+        // centroid does not travel. Gating the swipe on a single finger's travel made every
+        // splay look like a swipe, and a centroid that barely moves resolves to RIGHT, so
+        // resting three fingers switched host.
+        val r = recog()
+        r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f)))
+        r.frame(fr(16, pt(1, 90f, 200f), pt(2, 140f, 200f), pt(3, 190f, 200f)))
+        assertEquals(
+            emptyList<PadAction>(),
+            r.frame(fr(32, pt(1, 50f, 200f), pt(2, 140f, 200f), pt(3, 230f, 200f))),
+        )
+    }
+
+    @Test
     fun `three finger swipe emits one host action`() {
         val r = recog()
         r.frame(fr(0, pt(1, 100f, 200f), pt(2, 140f, 200f), pt(3, 180f, 200f)))

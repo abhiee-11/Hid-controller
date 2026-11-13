@@ -242,7 +242,14 @@ class TouchpadGestureRecognizer(
                 }
             }
             Family.THREE -> {
-                if (maxPoints == 3 && !swipeEmitted && travel > SWIPE_DISTANCE_DP * density) {
+                // The swipe is the hand moving, so it is measured by the centroid, not by how
+                // far a single finger went. Gating on per-finger travel made a splay - fingers
+                // spreading out while the hand stays put - look like a swipe, and a centroid
+                // that barely moved then resolved to RIGHT.
+                if (
+                    maxPoints == 3 && !swipeEmitted &&
+                    hypot(swipeDx, swipeDy) > SWIPE_DISTANCE_DP * density
+                ) {
                     out += PadAction.Host(direction(swipeDx, swipeDy))
                     swipeEmitted = true
                     familyLocked = true
