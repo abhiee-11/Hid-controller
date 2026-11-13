@@ -1511,19 +1511,16 @@ private fun WasdStage(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Shoulder row: Tab on the left, Esc on the right, space between.
+        // Shoulder row: the first shoulder on the left, the last on the right, spread apart.
         Row(Modifier.fillMaxWidth().weight(0.7f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            WasdKeyButton(
-                cap = layout.shoulders[0], modifiers = modifiers, pressedKeys = pressedKeys,
-                hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
-                onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(1f).fillMaxHeight(),
-            )
-            Spacer(Modifier.weight(2f))
-            WasdKeyButton(
-                cap = layout.shoulders[1], modifiers = modifiers, pressedKeys = pressedKeys,
-                hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
-                onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(1f).fillMaxHeight(),
-            )
+            layout.shoulders.forEachIndexed { index, cap ->
+                if (index > 0) Spacer(Modifier.weight(2f))
+                WasdKeyButton(
+                    cap = cap, modifiers = modifiers, pressedKeys = pressedKeys,
+                    hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
+                    onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(1f).fillMaxHeight(),
+                )
+            }
         }
         Row(Modifier.fillMaxWidth().weight(3f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             WasdCluster(
@@ -1531,18 +1528,18 @@ private fun WasdStage(
                 hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
                 onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(1f).fillMaxHeight(),
             )
-            // Centre column: Enter on top, Space filling the rest as a wide bar.
+            // Centre column: the last key fills the rest of the height as a wide bar.
             Column(Modifier.weight(1.2f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                WasdKeyButton(
-                    cap = layout.centre[0], modifiers = modifiers, pressedKeys = pressedKeys,
-                    hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
-                    onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(1f).fillMaxWidth(),
-                )
-                WasdKeyButton(
-                    cap = layout.centre[1], modifiers = modifiers, pressedKeys = pressedKeys,
-                    hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
-                    onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(2f).fillMaxWidth(),
-                )
+                layout.centre.forEachIndexed { index, cap ->
+                    WasdKeyButton(
+                        cap = cap, modifiers = modifiers, pressedKeys = pressedKeys,
+                        hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
+                        onModifier = onModifier, onKey = onKey,
+                        modifier = Modifier
+                            .weight(if (index == layout.centre.lastIndex) 2f else 1f)
+                            .fillMaxWidth(),
+                    )
+                }
             }
             WasdCluster(
                 rows = layout.rightCluster, modifiers = modifiers, pressedKeys = pressedKeys,
