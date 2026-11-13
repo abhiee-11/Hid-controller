@@ -194,7 +194,7 @@ fun GamepadScreen(
     val prefs = remember { context.getSharedPreferences("hid_gamepad", Context.MODE_PRIVATE) }
     var hostType by remember { mutableStateOf(hostTypeFromStorage(prefs.getString("host_type", null))) }
     var controllerMode by remember { mutableStateOf(controllerModeFromStorage(prefs.getString("controller_mode", null))) }
-    var mouseSensitivity by remember { mutableStateOf(prefs.getFloat("mouse_sensitivity", 1f)) }
+    var mouseSensitivity by remember { mutableStateOf(readFloatPref(prefs, "mouse_sensitivity", 1f)) }
     var touchGesturesEnabled by remember { mutableStateOf(prefs.getBoolean("touch_gestures_on", true)) }
     var needsSetup by remember {
         mutableStateOf(needsOnboarding(prefs.getBoolean("setup_complete", false)))
@@ -227,8 +227,8 @@ fun GamepadScreen(
         return
     }
     var tiltOn by remember { mutableStateOf(prefs.getBoolean("tilt_on", false)) }
-    var tiltSensitivity by remember { mutableStateOf(prefs.getFloat("tilt_sensitivity", 1f)) }
-    var tiltDeadzone by remember { mutableStateOf(prefs.getFloat("tilt_deadzone", 0.05f)) }
+    var tiltSensitivity by remember { mutableStateOf(readFloatPref(prefs, "tilt_sensitivity", 1f)) }
+    var tiltDeadzone by remember { mutableStateOf(readFloatPref(prefs, "tilt_deadzone", 0.05f)) }
     var tiltMenuOpen by remember { mutableStateOf(false) }
 
     val model = remember { ControllerModel() }

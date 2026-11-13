@@ -153,7 +153,11 @@ class MainActivity : ComponentActivity() {
 
         manager = HidRuntime.get(this)
         hapticsOn = getSharedPreferences("hid_gamepad", MODE_PRIVATE).getBoolean("haptics_on", true)
-        hapticsStrength = getSharedPreferences("hid_gamepad", MODE_PRIVATE).getFloat("haptics_strength", 1.0f)
+        hapticsStrength = readFloatPref(
+            getSharedPreferences("hid_gamepad", MODE_PRIVATE),
+            "haptics_strength",
+            1.0f,
+        )
         hidEnabled = readHidEnabled()
 
         val btFilter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
