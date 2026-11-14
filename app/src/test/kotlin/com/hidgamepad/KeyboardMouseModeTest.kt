@@ -129,15 +129,11 @@ class KeyboardMouseModeTest {
     }
 
     @Test
-    fun `onboarding storage restores mode host and setup flag semantics`() {
+    fun `storage restores mode and host semantics`() {
         assertEquals(ControllerMode.MOUSE, controllerModeFromStorage("MOUSE"))
         assertEquals(ControllerMode.GAMEPAD, controllerModeFromStorage("NOPE"))
         assertEquals(HostType.ANDROID, hostTypeFromStorage("ANDROID"))
         assertEquals(HostType.WINDOWS, hostTypeFromStorage(null))
-        // The tutorial is a one-time thing: once it has been finished it never comes back
-        // on its own, whether or not a host has been chosen yet.
-        assertTrue(needsOnboarding(false))
-        assertFalse(needsOnboarding(true))
     }
 
     @Test

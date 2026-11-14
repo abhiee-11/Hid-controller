@@ -203,15 +203,16 @@ fun GamepadScreen(
     var controllerMode by remember { mutableStateOf(controllerModeFromStorage(prefs.getString("controller_mode", null))) }
     var mouseSensitivity by remember { mutableStateOf(readFloatPref(prefs, "mouse_sensitivity", 1f)) }
     var touchGesturesEnabled by remember { mutableStateOf(prefs.getBoolean("touch_gestures_on", true)) }
-    var needsSetup by remember {
-        mutableStateOf(needsOnboarding(prefs.getBoolean("setup_complete", false)))
-    }
-    var onboardingStep by remember { mutableStateOf(TutorialStep.start) }
+    // Home is the entry page: every cold start opens it, background resume never does. It stays
+    // on screen for this process until the user leaves it (Next / Open Controller) or re-opens it
+    // from Settings.
+    var showHome by remember { mutableStateOf(true) }
+    var homeStep by remember { mutableStateOf(HomeStep.start) }
     // The report's send runs in this scope, not the panel's, so closing the panel while a
     // report is on the wire does not cancel it.
     val reportScope = rememberCoroutineScope()
-    if (needsSetup) {
-        TutorialPanel(
+    if (showHome) {
+        HomePanel(
             hostType = hostType,
             mode = controllerMode,
             onHostType = { newType ->
@@ -224,12 +225,9 @@ fun GamepadScreen(
                 controllerMode = newMode
                 prefs.edit().putString("controller_mode", newMode.name).apply()
             },
-            onStep = { onboardingStep = it },
-            step = onboardingStep,
-            onFinish = {
-                prefs.edit().putBoolean("setup_complete", true).apply()
-                needsSetup = false
-            },
+            onStep = { homeStep = it },
+            step = homeStep,
+            onFinish = { showHome = false },
         )
         return
     }
@@ -659,10 +657,10 @@ fun GamepadScreen(
                 onChangeDevice = { settingsOpen = false; devicesOpen = true },
                 onDiscoverable = onDiscoverable,
                 onRunSetup = {
-                    // Replaying the tutorial starts at the beginning, not halfway through.
+                    // Re-opening Home starts at the first step.
                     settingsOpen = false
-                    onboardingStep = TutorialStep.start
-                    needsSetup = true
+                    homeStep = HomeStep.start
+                    showHome = true
                 },
                 onReportProblem = { settingsOpen = false; reportOpen = true },
                 onMode = { switchMode(it) },
@@ -1170,7 +1168,7 @@ private fun SettingsPanel(
                         Button(onClick = onChangeDevice, modifier = Modifier.height(48.dp)) { Text("Change device") }
                         Button(onClick = onDiscoverable, modifier = Modifier.height(48.dp)) { Text("Make discoverable") }
                     }
-                    Button(onClick = onRunSetup, modifier = Modifier.height(48.dp)) { Text("Getting started") }
+                    Button(onClick = onRunSetup, modifier = Modifier.height(48.dp)) { Text("Home") }
                 }
                 SettingsSection.CONTROLS -> {
                     Text("Mode: ${modeLabel(controllerMode)}", fontSize = 12.sp, color = PadColors.secondary)
