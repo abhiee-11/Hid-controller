@@ -84,14 +84,18 @@ fun TutorialPanel(
             },
     ) {
         val wide = maxWidth >= 600.dp
+        // A short landscape phone cannot fit the artwork plus three choice rows plus the
+        // pinned footer; on short windows the artwork makes way so nothing scrolls.
+        val shortWindow = maxHeight < 400.dp
         val contentWidth = if (wide) 680.dp else maxWidth
 
+        Column(Modifier.fillMaxSize()) {
         Column(
             Modifier
-                .fillMaxSize()
+                .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(if (shortWindow) 6.dp else 12.dp),
         ) {
             // ---- header: skip is always reachable -------------------------------
             Row(
@@ -104,7 +108,7 @@ fun TutorialPanel(
             ) {
                 Text(
                     text = "Getting started",
-                    fontSize = 20.sp,
+                    fontSize = if (shortWindow) 16.sp else 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = colors.title,
                     modifier = Modifier.weight(1f),
@@ -125,7 +129,7 @@ fun TutorialPanel(
                     fontSize = 12.sp,
                     color = colors.hint,
                 )
-                Spacer(Modifier.height(6.dp))
+                Spacer(Modifier.height(if (shortWindow) 2.dp else 6.dp))
                 Box(
                     Modifier
                         .fillMaxWidth()
@@ -153,7 +157,7 @@ fun TutorialPanel(
                 horizontalArrangement = Arrangement.spacedBy(20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (wide) {
+                if (wide && !shortWindow) {
                     TutorialArtwork(step, Modifier.size(160.dp))
                 }
                 Column(
@@ -178,12 +182,14 @@ fun TutorialPanel(
                                 detail = "PC games and desktop control.",
                                 selected = hostType == HostType.WINDOWS,
                                 onClick = { onHostType(HostType.WINDOWS) },
+                                compact = shortWindow,
                             )
                             ChoiceRow(
                                 title = "Android phone or tablet",
                                 detail = "Games and app control on another Android device.",
                                 selected = hostType == HostType.ANDROID,
                                 onClick = { onHostType(HostType.ANDROID) },
+                                compact = shortWindow,
                             )
                         }
 
@@ -205,6 +211,7 @@ fun TutorialPanel(
                                     detail = choice.detail,
                                     selected = mode == choice.mode,
                                     onClick = { onMode(choice.mode) },
+                                    compact = shortWindow,
                                 )
                             }
                         }
@@ -215,36 +222,37 @@ fun TutorialPanel(
             if (!wide) {
                 TutorialArtwork(step, Modifier.size(140.dp))
             }
+        }
 
-            // ---- footer: back and next ------------------------------------------
-            Row(
-                Modifier
-                    
-                    .widthIn(max = contentWidth)
-                    .fillMaxWidth()
-                    .align(Alignment.CenterHorizontally),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                if (step.previous() != null) {
-                    Button(
-                        onClick = { step.previous()?.let(onStep) },
-                        modifier = Modifier.height(48.dp),
-                    ) { Text("Back") }
-                }
-                Spacer(Modifier.weight(1f))
-                if (step.isFinal) {
-                    Button(
-                        onClick = onFinish,
-                        modifier = Modifier.height(48.dp),
-                    ) { Text("Open Controller") }
-                } else {
-                    Button(
-                        onClick = { step.next()?.let(onStep) },
-                        modifier = Modifier.height(48.dp),
-                    ) { Text("Next") }
-                }
+        // ---- footer: back and next (pinned, so it never falls below the fold) -----
+        Row(
+            Modifier
+                .widthIn(max = contentWidth)
+                .fillMaxWidth()
+                .align(Alignment.CenterHorizontally)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (step.previous() != null) {
+                Button(
+                    onClick = { step.previous()?.let(onStep) },
+                    modifier = Modifier.height(48.dp),
+                ) { Text("Back") }
             }
+            Spacer(Modifier.weight(1f))
+            if (step.isFinal) {
+                Button(
+                    onClick = onFinish,
+                    modifier = Modifier.height(48.dp),
+                ) { Text("Open Controller") }
+            } else {
+                Button(
+                    onClick = { step.next()?.let(onStep) },
+                    modifier = Modifier.height(48.dp),
+                ) { Text("Next") }
+            }
+        }
         }
     }
 }
@@ -256,6 +264,7 @@ private fun ChoiceRow(
     detail: String,
     selected: Boolean,
     onClick: () -> Unit,
+    compact: Boolean = false,
 ) {
     val colors = LocalTutorialColors
     Row(
@@ -269,12 +278,12 @@ private fun ChoiceRow(
                 shape = RoundedCornerShape(12.dp),
             )
             .clickable(onClick = onClick)
-            .padding(14.dp),
+            .padding(if (compact) 10.dp else 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(text = title, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = colors.title)
-            Text(text = detail, fontSize = 12.sp, color = colors.body)
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(if (compact) 0.dp else 2.dp)) {
+            Text(text = title, fontSize = if (compact) 14.sp else 16.sp, fontWeight = FontWeight.SemiBold, color = colors.title)
+            Text(text = detail, fontSize = if (compact) 11.sp else 12.sp, color = colors.body)
         }
         if (selected) {
             Box(
