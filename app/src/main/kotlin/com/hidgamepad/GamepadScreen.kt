@@ -263,7 +263,7 @@ fun GamepadScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
-            tilt.stop()
+            tilt.close()
         }
     }
 

@@ -5,6 +5,8 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import android.os.Handler
+import android.os.HandlerThread
 import android.util.Log
 import kotlin.math.atan2
 import kotlin.math.sqrt
@@ -81,10 +83,16 @@ class TiltController(
     val sensor: Sensor? = manager?.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
         ?: manager?.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR)
 
+    // Sensor events fired on the main looper had the twist math competing with frame
+    // production; the listener is registered on this thread instead. The thread is recreated
+    // lazily in start() so a close() (which quits it) is not permanent.
+    private var tiltThread = HandlerThread("tiltSteering").apply { start() }
+    private var tiltHandler = Handler(tiltThread.looper)
+
     @Volatile private var registered = false
-    private var tuning = TiltTuning()
-    private var zero = floatArrayOf(0f, 0f, 0f, 1f)
-    private var latest: FloatArray? = null
+    @Volatile private var tuning = TiltTuning()
+    @Volatile private var zero = floatArrayOf(0f, 0f, 0f, 1f)
+    @Volatile private var latest: FloatArray? = null
     private var filtered = 0f
     /** True until the first sample of the current session is baked into [zero]. */
     @Volatile private var needZero = true
@@ -103,8 +111,12 @@ class TiltController(
             registered = true
             filtered = 0f
             needZero = true // calibrate against the current pose right away
+            if (!tiltThread.isAlive) {
+                tiltThread = HandlerThread("tiltSteering").apply { start() }
+                tiltHandler = Handler(tiltThread.looper)
+            }
             sensor?.let {
-                manager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+                manager?.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME, tiltHandler)
                 Log.i(TAG, "tilt steering ON using $sensorDescription")
             } ?: Log.i(TAG, "tilt steering requested but no rotation sensor available")
         }
@@ -119,6 +131,15 @@ class TiltController(
             Log.i(TAG, "tilt steering OFF — sensor listener unregistered, center emitted")
             onSteer(0f)
         }
+    }
+
+    /** Unregister and shut the sensor thread down for good. */
+    fun close() {
+        registered = false
+        manager?.unregisterListener(this)
+        onSteer(0f)
+        tiltThread.quitSafely()
+        tiltThread.join()
     }
 
     /** Calibrate: the next/currently-known physical pose becomes stick-center. */
