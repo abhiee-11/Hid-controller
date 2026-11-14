@@ -401,6 +401,11 @@ fun GamepadScreen(
         mutableStateOf(wasdLayoutFromStorage(prefs.getString(WASD_LAYOUT_PREF_KEY, null)))
     }
     var selectedKeyId by remember { mutableStateOf<String?>(null) }
+    var addKeyOpen by remember { mutableStateOf(false) }
+    // Everything placeable on the WASD page: the WASD keys plus the whole keyboard palette.
+    val wasdPool = remember {
+        assignKeyIds((wasdLayout().keys + keyboardRows().flatten() + functionRow()).distinct())
+    }
 
     var devicesOpen by remember { mutableStateOf(false) }
     var deviceList by remember { mutableStateOf<List<BluetoothDevice>>(emptyList()) }
@@ -598,6 +603,7 @@ fun GamepadScreen(
                         keyboardKeys = if (down) keyboardKeys + usage else keyboardKeys - usage
                     },
                     absolute = customLayout,
+                    capsById = wasdPool,
                     editMode = editingLayout,
                     selectedKeyId = selectedKeyId,
                     onSelectKey = { selectedKeyId = it },
@@ -607,6 +613,11 @@ fun GamepadScreen(
                     onResizeKey = { id, factor ->
                         customLayout = customLayout?.map { if (it.id == id) it.resizeBy(factor) else it }
                     },
+                    onRemoveKey = { id ->
+                        customLayout = customLayout?.filterNot { it.id == id }
+                        if (selectedKeyId == id) selectedKeyId = null
+                    },
+                    onAddKey = { addKeyOpen = true },
                     onResetLayout = {
                         prefs.edit().remove(WASD_LAYOUT_PREF_KEY).apply()
                         customLayout = null
@@ -711,6 +722,18 @@ fun GamepadScreen(
             tiltOn = tiltOn,
             scope = reportScope,
             onTopicSaved = { topic -> prefs.edit().putString("report_topic", topic).apply() },
+        )
+    }
+    if (addKeyOpen) {
+        WasdAddKeyPanel(
+            pool = wasdPool,
+            onPick = { id, cap ->
+                val base = customLayout ?: defaultWasdGeometry()
+                customLayout = base + WasdKeyGeometry(id, 0.44f, 0.32f, 0.12f, 0.16f).clamped()
+                selectedKeyId = id
+                addKeyOpen = false
+            },
+            onDismiss = { addKeyOpen = false },
         )
     }
 }
@@ -1580,11 +1603,15 @@ private fun WasdStage(
     modifier: Modifier = Modifier,
     /** Non-null renders the custom absolute layout (in use, or while editing it). */
     absolute: List<WasdKeyGeometry>? = null,
+    /** Every key that can be placed on the page, by storage id. */
+    capsById: Map<String, KeyCap> = emptyMap(),
     editMode: Boolean = false,
     selectedKeyId: String? = null,
     onSelectKey: (String) -> Unit = {},
     onMoveKey: (String, Float, Float) -> Unit = { _, _, _ -> },
     onResizeKey: (String, Float) -> Unit = { _, _ -> },
+    onRemoveKey: (String) -> Unit = {},
+    onAddKey: () -> Unit = {},
     onResetLayout: () -> Unit = {},
     onDone: () -> Unit = {},
 ) {
@@ -1592,7 +1619,7 @@ private fun WasdStage(
     if (absolute != null) {
         WasdLayoutStage(
             layout = absolute,
-            keyCaps = layout.keys,
+            capsById = capsById,
             modifiers = modifiers,
             pressedKeys = pressedKeys,
             hapticsEnabled = hapticsEnabled,
@@ -1602,6 +1629,8 @@ private fun WasdStage(
             onSelectKey = onSelectKey,
             onMoveKey = onMoveKey,
             onResizeKey = onResizeKey,
+            onRemoveKey = onRemoveKey,
+            onAddKey = onAddKey,
             onResetLayout = onResetLayout,
             onDone = onDone,
             onModifier = onModifier,
@@ -1610,23 +1639,17 @@ private fun WasdStage(
         )
         return
     }
-    BoxWithConstraints(
+    // Two rows of keys, not seven: the weights shrink them to fit, so there is nothing to
+    // scroll. (The keyboard page does need its floor-and-scroll; this page does not - a floor
+    // here made the whole page overflow on a short landscape screen.)
+    Column(
         modifier
             .fillMaxSize()
             .clip(RoundedCornerShape(14.dp))
             .background(RGB_DECK_COLOR)
             .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Same treatment the keyboard gets on short windows: once the stage is tighter than
-        // the content, the page scrolls instead of crushing the keys below a usable height.
-        val stageHeight = maxHeight.coerceAtLeast(400.dp)
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
-        ) {
-            Column(
-                Modifier.fillMaxWidth().height(stageHeight),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
         // Shoulder row: the first shoulder on the left, the last on the right, spread apart.
         Row(Modifier.fillMaxWidth().weight(0.7f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             layout.shoulders.forEachIndexed { index, cap ->
@@ -1662,10 +1685,8 @@ private fun WasdStage(
                 hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
                 onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(1f).fillMaxHeight(),
             )
-        } // Row
-        } // height-constrained column
-        } // vertical-scroll column
-    } // BoxWithConstraints
+        }
+    }
 }
 
 /**
@@ -1676,7 +1697,7 @@ private fun WasdStage(
 @Composable
 private fun WasdLayoutStage(
     layout: List<WasdKeyGeometry>,
-    keyCaps: List<KeyCap>,
+    capsById: Map<String, KeyCap>,
     modifiers: Int,
     pressedKeys: Set<Int>,
     hapticsEnabled: Boolean,
@@ -1686,6 +1707,8 @@ private fun WasdLayoutStage(
     onSelectKey: (String) -> Unit,
     onMoveKey: (String, Float, Float) -> Unit,
     onResizeKey: (String, Float) -> Unit,
+    onRemoveKey: (String) -> Unit,
+    onAddKey: () -> Unit,
     onResetLayout: () -> Unit,
     onDone: () -> Unit,
     onModifier: (Int, Boolean) -> Unit,
@@ -1693,7 +1716,6 @@ private fun WasdLayoutStage(
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current.density
-    val caps = keyCaps.associateBy { it.label }
     BoxWithConstraints(
         modifier
             .fillMaxSize()
@@ -1707,7 +1729,7 @@ private fun WasdLayoutStage(
         // bottom can never cover the bottom row.
         val areaHeight = if (editMode) pageHeight * 0.72f else pageHeight
         for (g in layout) {
-            val cap = caps[g.id] ?: continue
+            val cap = capsById[g.id] ?: continue
             val keyModifier = Modifier
                 .offset(pageWidth * g.x, areaHeight * g.y)
                 .size(pageWidth * g.w, areaHeight * g.h)
@@ -1751,13 +1773,13 @@ private fun WasdLayoutStage(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Text(
-                    "Customise � drag keys anywhere � tap to select � -/+ resize",
+                    "Customise - drag keys anywhere - tap to select - -/+ resize - Del removes - Add inserts",
                     fontSize = 12.sp,
                     color = PadColors.secondary,
                 )
                 Row(
                     Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val hasSelection = selectedKeyId != null
@@ -1771,10 +1793,73 @@ private fun WasdLayoutStage(
                         enabled = hasSelection,
                         modifier = Modifier.height(46.dp),
                     ) { Text("+") }
+                    Button(
+                        onClick = { selectedKeyId?.let(onRemoveKey) },
+                        enabled = hasSelection,
+                        modifier = Modifier.height(46.dp),
+                    ) { Text("Del") }
+                    Button(onClick = onAddKey, modifier = Modifier.height(46.dp)) { Text("Add") }
                     Spacer(Modifier.weight(1f))
                     Button(onClick = onResetLayout, modifier = Modifier.height(46.dp)) { Text("Reset") }
                     Button(onClick = onDone, modifier = Modifier.height(46.dp)) { Text("Done") }
                 }
+            }
+        }
+    }
+}
+
+/**
+ * The palette for the WASD page's Add button: every key the app can place, in a scrollable
+ * grid. Tapping one drops it on the pad, selected, ready to be dragged into place.
+ */
+@Composable
+private fun WasdAddKeyPanel(
+    pool: Map<String, KeyCap>,
+    onPick: (String, KeyCap) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color(0x99000000))
+            .clickable(onClick = onDismiss),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier
+                .padding(24.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(RGB_DECK_COLOR)
+                .padding(16.dp)
+                .widthIn(max = 560.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Add a key", fontSize = 16.sp, color = PadColors.text)
+            Text("Tap a key to place it on the pad.", fontSize = 11.sp, color = PadColors.secondary)
+            Column(
+                Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                val entries = pool.entries.toList()
+                for (row in entries.chunked(8)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        for ((id, cap) in row) {
+                            Button(
+                                onClick = { onPick(id, cap) },
+                                modifier = Modifier.weight(1f).height(40.dp),
+                                contentPadding = PaddingValues(2.dp),
+                            ) {
+                                Text(cap.label, fontSize = 10.sp, maxLines = 1)
+                            }
+                        }
+                        // Keep the last, short row aligned with the rest.
+                        repeat(8 - row.size) { Spacer(Modifier.weight(1f)) }
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Spacer(Modifier.weight(1f))
+                Button(onClick = onDismiss) { Text("Close") }
             }
         }
     }
