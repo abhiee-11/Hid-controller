@@ -39,3 +39,17 @@ enum class TutorialStep {
         val start: TutorialStep = HOST
     }
 }
+
+/** One of the controllers offered on the setup screen's mode step. */
+data class OnboardingMode(val mode: ControllerMode, val detail: String)
+
+/**
+ * The modes first-run setup offers: Gamepad, Mouse and Keyboard, never WASD. WASD is a
+ * game-specific keyboard-driven page someone picks once they know they want it, so onboarding
+ * keeps the three general-purpose choices and points people at them.
+ */
+val ONBOARDING_MODES: List<OnboardingMode> = listOf(
+    OnboardingMode(ControllerMode.GAMEPAD, "Buttons, sticks, triggers and tilt."),
+    OnboardingMode(ControllerMode.MOUSE, "A touchpad with gestures, clicks and scroll."),
+    OnboardingMode(ControllerMode.KEYBOARD, "A full QWERTY layout with a function row."),
+)

@@ -199,24 +199,14 @@ fun TutorialPanel(
                                 fontSize = 14.sp,
                                 color = colors.body,
                             )
-                            ChoiceRow(
-                                title = "Gamepad",
-                                detail = "Buttons, sticks, triggers and tilt.",
-                                selected = mode == ControllerMode.GAMEPAD,
-                                onClick = { onMode(ControllerMode.GAMEPAD) },
-                            )
-                            ChoiceRow(
-                                title = "Mouse",
-                                detail = "A touchpad with gestures, clicks and scroll.",
-                                selected = mode == ControllerMode.MOUSE,
-                                onClick = { onMode(ControllerMode.MOUSE) },
-                            )
-                            ChoiceRow(
-                                title = "Keyboard",
-                                detail = "A full QWERTY layout with a function row.",
-                                selected = mode == ControllerMode.KEYBOARD,
-                                onClick = { onMode(ControllerMode.KEYBOARD) },
-                            )
+                            for (choice in ONBOARDING_MODES) {
+                                ChoiceRow(
+                                    title = modeLabel(choice.mode),
+                                    detail = choice.detail,
+                                    selected = mode == choice.mode,
+                                    onClick = { onMode(choice.mode) },
+                                )
+                            }
                         }
                     }
                 }

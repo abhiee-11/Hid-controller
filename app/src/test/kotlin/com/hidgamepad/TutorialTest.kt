@@ -55,4 +55,16 @@ class TutorialTest {
         assertEquals(true, TutorialStep.MODE.isFinal)
         assertEquals(false, TutorialStep.HOST.isFinal)
     }
+
+    @Test
+    fun `first-run setup never offers the WASD mode`() {
+        // WASD is a game-specific, keyboard-only page; it is a choice for people who already
+        // know they want it, so onboarding keeps the three general-purpose modes.
+        val modes = ONBOARDING_MODES.map { it.mode }
+        assertEquals(
+            listOf(ControllerMode.GAMEPAD, ControllerMode.MOUSE, ControllerMode.KEYBOARD),
+            modes,
+        )
+        assertEquals(listOf("WASD"), (ControllerMode.entries - modes.toSet()).map { it.name })
+    }
 }

@@ -558,6 +558,11 @@ fun GamepadScreen(
                 )
             }
             ControllerMode.WASD -> {
+                Text(
+                    "WASD reports as a keyboard — re-pair with the combo profile if the keys do nothing",
+                    fontSize = 11.sp,
+                    color = PadColors.secondary,
+                )
                 WasdStage(
                     modifiers = keyboardModifiers,
                     pressedKeys = keyboardKeys,
@@ -1514,14 +1519,23 @@ private fun WasdStage(
     modifier: Modifier = Modifier,
 ) {
     val layout = wasdLayout()
-    Column(
+    BoxWithConstraints(
         modifier
             .fillMaxSize()
             .clip(RoundedCornerShape(14.dp))
             .background(RGB_DECK_COLOR)
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        // Same treatment the keyboard gets on short windows: once the stage is tighter than
+        // the content, the page scrolls instead of crushing the keys below a usable height.
+        val stageHeight = maxHeight.coerceAtLeast(400.dp)
+        Column(
+            Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        ) {
+            Column(
+                Modifier.fillMaxWidth().height(stageHeight),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
         // Shoulder row: the first shoulder on the left, the last on the right, spread apart.
         Row(Modifier.fillMaxWidth().weight(0.7f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             layout.shoulders.forEachIndexed { index, cap ->
@@ -1557,6 +1571,8 @@ private fun WasdStage(
                 hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
                 onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(1f).fillMaxHeight(),
             )
-        }
-    }
+        } // Row
+        } // height-constrained column
+        } // vertical-scroll column
+    } // BoxWithConstraints
 }
