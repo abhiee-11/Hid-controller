@@ -27,4 +27,15 @@ class HostTypeSelectionTest {
         assertEquals(HostType.WINDOWS, hostTypeForDeviceName("Unknown Device", HostType.WINDOWS))
         assertEquals(HostType.ANDROID, hostTypeForDeviceName("Unknown Device", HostType.ANDROID))
     }
+
+    @Test
+    fun `a pc hiding inside another word does not claim a windows host`() {
+        // Bluetooth names are frequently one packed token; "pc" needs to stand alone.
+        assertEquals(HostType.ANDROID, hostTypeForDeviceName("AbhiesPc", HostType.ANDROID))
+        assertEquals(HostType.WINDOWS, hostTypeForDeviceName("Abhies-PC"))
+        assertEquals(HostType.WINDOWS, hostTypeForDeviceName("My PC"))
+        assertEquals(HostType.WINDOWS, hostTypeForDeviceName("ThinkPad T480s"))
+        assertEquals(HostType.ANDROID, hostTypeForDeviceName("Mi 10"))
+        assertEquals(HostType.ANDROID, hostTypeForDeviceName("Redmi Note 10"))
+    }
 }

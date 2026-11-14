@@ -7,18 +7,27 @@ sealed interface HostAction {
     data object None : HostAction
 }
 
+private val WORD = Regex("[a-z0-9]+")
+
 /**
  * Guesses the host type from the connected device's Bluetooth name, so a tablet gets the
  * Android gesture mapping without the user having to re-run setup. Falls back to
- * [current] when the name says nothing useful.
+ * [current] when the name says nothing useful. Keywords have to stand alone as whole words:
+ * Bluetooth names are frequently one packed token, and "pc" buried inside another word is not
+ * a PC.
  */
 fun hostTypeForDeviceName(name: String, current: HostType = HostType.WINDOWS): HostType {
-    val lower = name.lowercase()
-    val androidWords = listOf("tab", "tablet", "pixel", "galaxy", "android", "phone", "oneplus", "redmi", "mi ")
-    val windowsWords = listOf("desktop", "laptop", "pc", "notebook", "thinkpad", "surface")
+    val words = WORD.findAll(name.lowercase()).map { it.value }.toSet()
+    val androidWords = setOf(
+        "tab", "tablet", "pixel", "galaxy", "android", "phone",
+        "oneplus", "redmi", "mi",
+    )
+    val windowsWords = setOf(
+        "desktop", "laptop", "pc", "notebook", "thinkpad", "surface", "workstation",
+    )
     return when {
-        androidWords.any { it in lower } -> HostType.ANDROID
-        windowsWords.any { it in lower } -> HostType.WINDOWS
+        androidWords.any { it in words } -> HostType.ANDROID
+        windowsWords.any { it in words } -> HostType.WINDOWS
         else -> current
     }
 }
