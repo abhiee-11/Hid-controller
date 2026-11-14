@@ -707,7 +707,13 @@ class HidGamepadManager(context: Context) {
         )
     }
 
-    private fun sendReportNow(reportId: Int, payload: ByteArray) {
+    /**
+     * @param log true for a report sent because something changed; false for the 100 ms
+     *   heartbeat, which repeats an identical payload. Logging every heartbeat costs a hex
+     *   format and a logcat write ten times a second on the main thread, and buries the
+     *   one-off lines that actually matter.
+     */
+    private fun sendReportNow(reportId: Int, payload: ByteArray, log: Boolean = true) {
         val device = hostDevice ?: run {
             Log.w(TAG, "sendReportNow id=$reportId dropped: no connected host; target=${runtimeTargetSummary()}")
             return
@@ -732,13 +738,15 @@ class HidGamepadManager(context: Context) {
             return
         }
         try {
-            val payloadHex = payload.joinToString(" ") { "%02X".format(it) }
             val accepted = hd.sendReport(device, reportId, payload)
-            Log.i(
-                TAG,
-                "sendReport id=$reportId payload=[$payloadHex] length=${payload.size} " +
-                    "target=${runtimeTargetSummary()} acceptedByAndroid=$accepted",
-            )
+            if (log) {
+                val payloadHex = payload.joinToString(" ") { "%02X".format(it) }
+                Log.i(
+                    TAG,
+                    "sendReport id=$reportId payload=[$payloadHex] length=${payload.size} " +
+                        "target=${runtimeTargetSummary()} acceptedByAndroid=$accepted",
+                )
+            }
             if (accepted) {
                 reportsSent++
                 if (reportsSent % 100 == 0) Log.i(TAG, "reports sent: $reportsSent")
@@ -757,7 +765,7 @@ class HidGamepadManager(context: Context) {
     private val heartbeat = object : Runnable {
         override fun run() {
             // Heartbeat is gamepad-only; relative mouse movement must never be repeated here.
-            lastGamepadReport?.let { sendReportNow(GAMEPAD_REPORT_ID, it) }
+            lastGamepadReport?.let { sendReportNow(GAMEPAD_REPORT_ID, it, log = false) }
             mainHandler.postDelayed(this, 100)
         }
     }
