@@ -7,6 +7,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
@@ -50,6 +52,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
@@ -58,6 +61,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -390,6 +394,14 @@ fun GamepadScreen(
     var settingsOpen by remember { mutableStateOf(false) }
     var reportOpen by remember { mutableStateOf(false) }
 
+    // The WASD page's customised key layout. null = the built-in grid. Stored as serialised
+    // fractions; a malformed stored value falls back to the grid on load.
+    var editingLayout by remember { mutableStateOf(false) }
+    var customLayout by remember {
+        mutableStateOf(wasdLayoutFromStorage(prefs.getString(WASD_LAYOUT_PREF_KEY, null)))
+    }
+    var selectedKeyId by remember { mutableStateOf<String?>(null) }
+
     var devicesOpen by remember { mutableStateOf(false) }
     var deviceList by remember { mutableStateOf<List<BluetoothDevice>>(emptyList()) }
     LaunchedEffect(devicesOpen) {
@@ -558,11 +570,21 @@ fun GamepadScreen(
                 )
             }
             ControllerMode.WASD -> {
-                Text(
-                    "WASD reports as a keyboard — re-pair with the combo profile if the keys do nothing",
-                    fontSize = 11.sp,
-                    color = PadColors.secondary,
-                )
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "WASD reports as a keyboard — re-pair with the combo profile if the keys do nothing",
+                        fontSize = 11.sp,
+                        color = PadColors.secondary,
+                    )
+                    Spacer(Modifier.weight(1f))
+                    if (!editingLayout) {
+                        PadPill("Customize", accent = false, onClick = {
+                            customLayout = customLayout ?: defaultWasdGeometry()
+                            selectedKeyId = null
+                            editingLayout = true
+                        })
+                    }
+                }
                 WasdStage(
                     modifiers = keyboardModifiers,
                     pressedKeys = keyboardKeys,
@@ -574,6 +596,29 @@ fun GamepadScreen(
                     // No Fn layer here, so a press just adds or removes the usage.
                     onKey = { usage, down ->
                         keyboardKeys = if (down) keyboardKeys + usage else keyboardKeys - usage
+                    },
+                    absolute = customLayout,
+                    editMode = editingLayout,
+                    selectedKeyId = selectedKeyId,
+                    onSelectKey = { selectedKeyId = it },
+                    onMoveKey = { id, dx, dy ->
+                        customLayout = customLayout?.map { if (it.id == id) it.copy(x = it.x + dx, y = it.y + dy).clamped() else it }
+                    },
+                    onResizeKey = { id, factor ->
+                        customLayout = customLayout?.map { if (it.id == id) it.resizeBy(factor) else it }
+                    },
+                    onResetLayout = {
+                        prefs.edit().remove(WASD_LAYOUT_PREF_KEY).apply()
+                        customLayout = null
+                        selectedKeyId = null
+                        editingLayout = false
+                    },
+                    onDone = {
+                        selectedKeyId = null
+                        editingLayout = false
+                        customLayout?.let {
+                            prefs.edit().putString(WASD_LAYOUT_PREF_KEY, wasdLayoutToStorage(it)).apply()
+                        }
                     },
                 )
             }
@@ -1443,30 +1488,46 @@ private fun WasdKeyButton(
     onModifier: (Int, Boolean) -> Unit,
     onKey: (Int, Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    /** While editing a custom layout, taps select the key instead of reporting it. */
+    editMode: Boolean = false,
+    selected: Boolean = false,
+    onSelect: (String) -> Unit = {},
 ) {
     val action = cap.action
-    val active = when (action) {
-        is KeyAction.Modifier -> (modifiers and action.bit) != 0
-        is KeyAction.Usage -> action.usage in pressedKeys
-        is KeyAction.Fn -> false
+    val active = if (editMode) {
+        selected
+    } else {
+        when (action) {
+            is KeyAction.Modifier -> (modifiers and action.bit) != 0
+            is KeyAction.Usage -> action.usage in pressedKeys
+            is KeyAction.Fn -> false
+        }
     }
     KeyboardKeyButton(
         label = cap.label,
         active = active,
-        hapticsEnabled = hapticsEnabled,
+        hapticsEnabled = if (editMode) false else hapticsEnabled,
         hapticsStrength = hapticsStrength,
         onDown = {
-            when (action) {
-                is KeyAction.Modifier -> onModifier(action.bit, true)
-                is KeyAction.Usage -> onKey(action.usage, true)
-                is KeyAction.Fn -> Unit
+            if (editMode) {
+                onSelect(cap.label)
+            } else {
+                when (action) {
+                    is KeyAction.Modifier -> onModifier(action.bit, true)
+                    is KeyAction.Usage -> onKey(action.usage, true)
+                    is KeyAction.Fn -> Unit
+                }
             }
         },
         onUp = {
-            when (action) {
-                is KeyAction.Modifier -> onModifier(action.bit, false)
-                is KeyAction.Usage -> onKey(action.usage, false)
-                is KeyAction.Fn -> Unit
+            if (editMode) {
+                Unit
+            } else {
+                when (action) {
+                    is KeyAction.Modifier -> onModifier(action.bit, false)
+                    is KeyAction.Usage -> onKey(action.usage, false)
+                    is KeyAction.Fn -> Unit
+                }
             }
         },
         modifier = modifier,
@@ -1517,8 +1578,38 @@ private fun WasdStage(
     onModifier: (Int, Boolean) -> Unit,
     onKey: (Int, Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    /** Non-null renders the custom absolute layout (in use, or while editing it). */
+    absolute: List<WasdKeyGeometry>? = null,
+    editMode: Boolean = false,
+    selectedKeyId: String? = null,
+    onSelectKey: (String) -> Unit = {},
+    onMoveKey: (String, Float, Float) -> Unit = { _, _, _ -> },
+    onResizeKey: (String, Float) -> Unit = { _, _ -> },
+    onResetLayout: () -> Unit = {},
+    onDone: () -> Unit = {},
 ) {
     val layout = wasdLayout()
+    if (absolute != null) {
+        WasdLayoutStage(
+            layout = absolute,
+            keyCaps = layout.keys,
+            modifiers = modifiers,
+            pressedKeys = pressedKeys,
+            hapticsEnabled = hapticsEnabled,
+            hapticsStrength = hapticsStrength,
+            editMode = editMode,
+            selectedKeyId = selectedKeyId,
+            onSelectKey = onSelectKey,
+            onMoveKey = onMoveKey,
+            onResizeKey = onResizeKey,
+            onResetLayout = onResetLayout,
+            onDone = onDone,
+            onModifier = onModifier,
+            onKey = onKey,
+            modifier = modifier,
+        )
+        return
+    }
     BoxWithConstraints(
         modifier
             .fillMaxSize()
@@ -1575,4 +1666,116 @@ private fun WasdStage(
         } // height-constrained column
         } // vertical-scroll column
     } // BoxWithConstraints
+}
+
+/**
+ * The WASD page rendered as absolute positions, either because a custom layout was saved, or
+ * because the user is editing it right now. Every key fills a rectangle measured in fractions
+ * of the pad, so the layout survives window resizing and any page shape.
+ */
+@Composable
+private fun WasdLayoutStage(
+    layout: List<WasdKeyGeometry>,
+    keyCaps: List<KeyCap>,
+    modifiers: Int,
+    pressedKeys: Set<Int>,
+    hapticsEnabled: Boolean,
+    hapticsStrength: Float,
+    editMode: Boolean,
+    selectedKeyId: String?,
+    onSelectKey: (String) -> Unit,
+    onMoveKey: (String, Float, Float) -> Unit,
+    onResizeKey: (String, Float) -> Unit,
+    onResetLayout: () -> Unit,
+    onDone: () -> Unit,
+    onModifier: (Int, Boolean) -> Unit,
+    onKey: (Int, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val density = LocalDensity.current.density
+    val caps = keyCaps.associateBy { it.label }
+    BoxWithConstraints(
+        modifier
+            .fillMaxSize()
+            .clip(RoundedCornerShape(14.dp))
+            .background(RGB_DECK_COLOR)
+            .padding(16.dp),
+    ) {
+        val pageWidth = maxWidth
+        val pageHeight = maxHeight
+        // While editing, keys are laid out against a shorter box so the control strip at the
+        // bottom can never cover the bottom row.
+        val areaHeight = if (editMode) pageHeight * 0.72f else pageHeight
+        for (g in layout) {
+            val cap = caps[g.id] ?: continue
+            val keyModifier = Modifier
+                .offset(pageWidth * g.x, areaHeight * g.y)
+                .size(pageWidth * g.w, areaHeight * g.h)
+                .let { base ->
+                    if (editMode) {
+                        base.pointerInput(g.id) {
+                            detectDragGestures(onDrag = { _, drag ->
+                                onMoveKey(
+                                    g.id,
+                                    drag.x / density / pageWidth.value,
+                                    drag.y / density / areaHeight.value,
+                                )
+                            })
+                        }
+                    } else {
+                        base
+                    }
+                }
+            WasdKeyButton(
+                cap = cap,
+                modifiers = modifiers,
+                pressedKeys = pressedKeys,
+                hapticsEnabled = hapticsEnabled,
+                hapticsStrength = hapticsStrength,
+                onModifier = onModifier,
+                onKey = onKey,
+                modifier = keyModifier,
+                editMode = editMode,
+                selected = editMode && selectedKeyId == g.id,
+                onSelect = { onSelectKey(g.id) },
+            )
+        }
+        if (editMode) {
+            // Bottom strip for the customise controls; drags/scrolls on keys pass over it.
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomCenter)
+                    .background(RGB_DECK_COLOR)
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    "Customise � drag keys anywhere � tap to select � -/+ resize",
+                    fontSize = 12.sp,
+                    color = PadColors.secondary,
+                )
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    val hasSelection = selectedKeyId != null
+                    Button(
+                        onClick = { selectedKeyId?.let { onResizeKey(it, 0.88f) } },
+                        enabled = hasSelection,
+                        modifier = Modifier.height(46.dp),
+                    ) { Text("-") }
+                    Button(
+                        onClick = { selectedKeyId?.let { onResizeKey(it, 1.14f) } },
+                        enabled = hasSelection,
+                        modifier = Modifier.height(46.dp),
+                    ) { Text("+") }
+                    Spacer(Modifier.weight(1f))
+                    Button(onClick = onResetLayout, modifier = Modifier.height(46.dp)) { Text("Reset") }
+                    Button(onClick = onDone, modifier = Modifier.height(46.dp)) { Text("Done") }
+                }
+            }
+        }
+    }
 }
