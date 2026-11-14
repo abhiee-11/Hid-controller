@@ -104,6 +104,9 @@ fun GestureTouchpad(
 
     DisposableEffect(recognizer, bridge) {
         onDispose {
+            // The bridge schedules button/menu releases on this handler; dropping those
+            // messages here means a pending release can't fire from a screen that is gone.
+            handler.removeCallbacksAndMessages(null)
             dispatch(recognizer.reset())
             bridge.releaseAll()
         }
