@@ -47,6 +47,17 @@ android {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+
+        // Side-loadable showcase build for the portfolio page: installs straight from a
+        // browser, and deliberately ships without the maintainer's ntfy topic, so anyone
+        // who downloads it cannot reach (or flood) the report topic. Signed with the debug
+        // keystore, which is what regular debug installs use — this is not a release key.
+        create("portfolio") {
+            initWith(getByName("release"))
+            matchingFallbacks += listOf("release")
+            signingConfig = signingConfigs.getByName("debug")
+            buildConfigField("String", "NTFY_TOPIC", "\"\"")
+        }
     }
 
     compileOptions {

@@ -27,3 +27,7 @@ read_gamepad.ps1
 *.yyyy-mm.txt
 sc*.png
 ui.xml
+
+# Gradle/Kotlin daemon state (generated)
+.kotlin/
+gradle/gradle-daemon-jvm.properties
