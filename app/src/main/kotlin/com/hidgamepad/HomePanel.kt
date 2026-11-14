@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -44,7 +45,8 @@ import androidx.compose.ui.unit.sp
  * into the controller. Returning from the background never lands here again; the page is only
  * reached by a cold start or from Settings.
  *
- * Layout: a pinned header ("Home"), a split body — the headline and its explanation on
+ * Layout: a pinned header ("Home"/"Mode" + the master HID switch), a split body — the headline
+ * and its explanation on
  * the left, the big choice cards on the right — and a pinned footer with Back / Next. On short
  * windows everything shrinks rather than scrolling; on very small windows the body scrolls but
  * the footer stays put.
@@ -58,6 +60,9 @@ fun HomePanel(
     onMode: (ControllerMode) -> Unit,
     onStep: (HomeStep) -> Unit,
     onFinish: () -> Unit,
+    /** The master switch, shared with Settings: off releases every input and unregisters the HID device. */
+    hidEnabled: Boolean,
+    onHidEnabledChange: (Boolean) -> Unit,
 ) {
     val colors = HomeColors
 
@@ -98,7 +103,18 @@ fun HomePanel(
                     fontSize = if (shortWindow) 18.sp else 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = colors.title,
+                    modifier = Modifier.weight(1f),
                 )
+                // The master HID switch, also on Settings: the host has to see the device before
+                // the controller can be used, so it lives on the entry page too.
+                Text(
+                    text = "HID controller: ${if (hidEnabled) "ON" else "OFF"}",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.body,
+                    modifier = Modifier.padding(end = 10.dp),
+                )
+                Switch(checked = hidEnabled, onCheckedChange = onHidEnabledChange)
             }
 
             // ---- body ---------------------------------------------------------------

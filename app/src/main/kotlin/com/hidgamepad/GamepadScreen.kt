@@ -228,6 +228,8 @@ fun GamepadScreen(
             onStep = { homeStep = it },
             step = homeStep,
             onFinish = { showHome = false },
+            hidEnabled = hidEnabled,
+            onHidEnabledChange = onHidEnabledChange,
         )
         return
     }
