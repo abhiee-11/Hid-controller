@@ -107,4 +107,24 @@ class RgbBacklightTest {
         }
         assertEquals(hash2(4, 9), hash2(4, 9), 0.0f)
     }
+
+    @Test
+    fun `no effect ever reports an intensity above one, even with a future-dated flash`() {
+        // A Flash stamped ahead of the clock (the system clock moved backwards) made the
+        // reactive effect compute a full pass plus extra, and RIPPLE multiply it again.
+        val future = Flash(usage = KeyUsage.A, x = 0.4f, y = 0.5f, atMillis = 3_000L + 10_000L)
+        for (effect in RgbEffect.entries) {
+            val zone = light(0.4f, 0.5f, base.copy(effect = effect), flashes = listOf(future))
+            assertTrue("$effect intensity ${zone.intensity} must be at most 1", zone.intensity <= 1f)
+            assertTrue("$effect intensity ${zone.intensity} must be at least 0", zone.intensity >= 0f)
+        }
+    }
+
+    @Test
+    fun `ripple is clamped to full intensity at the flash origin`() {
+        val cfg = base.copy(effect = RgbEffect.RIPPLE, staticColor = 3)
+        val flash = Flash(usage = KeyUsage.A, x = 0.5f, y = 0.5f, atMillis = 2_990L)
+        val zone = light(0.5f, 0.5f, cfg, flashes = listOf(flash))
+        assertTrue("intensity must not exceed 1, got ${zone.intensity}", zone.intensity <= 1f)
+    }
 }

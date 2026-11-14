@@ -103,13 +103,22 @@ fun keyLight(
     val speed = config.speed
 
     fun presetAt(intensity: Float): RgbZone {
-        val scaled = (preset.value * intensity * config.brightness).coerceIn(0f, 1f)
-        return RgbZone(Color.hsv(preset.hue, preset.sat, scaled), intensity)
+        // Every effect scales colour through this point, so the clamp lives here: a key's
+        // light can never be louder than the preset, whatever the effect computed.
+        val clamped = intensity.coerceIn(0f, 1f)
+        val scaled = (preset.value * clamped * config.brightness).coerceIn(0f, 1f)
+        return RgbZone(Color.hsv(preset.hue, preset.sat, scaled), clamped)
     }
 
-    // The reactive effects keep a decaying energy field per key.
-    val flashEnergy = flashes.filter { timeMillis - it.atMillis <= FLASH_LIFETIME_MS }
-        .maxOfOrNull { f -> (1f - (timeMillis - f.atMillis) / FLASH_LIFETIME_MS.toFloat()) }
+    // The reactive effects keep a decaying energy field per key. Computed in one pass, without
+    // the filtered copy; 60 keys x 60 fps made this a steady allocation otherwise.
+    var flashEnergy: Float? = null
+    for (f in flashes) {
+        val age = timeMillis - f.atMillis
+        if (age > FLASH_LIFETIME_MS) continue
+        val energy = 1f - age / FLASH_LIFETIME_MS.toFloat()
+        if (flashEnergy == null || energy > flashEnergy) flashEnergy = energy
+    }
 
     fun flashNear(x: Float, y: Float, falloff: Float = 0.05f): Float {
         var energy = 0f
