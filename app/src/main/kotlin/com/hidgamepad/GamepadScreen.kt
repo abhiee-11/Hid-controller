@@ -1143,7 +1143,7 @@ private fun SettingsPanel(
                     color = PadColors.text,
                     modifier = Modifier.weight(1f),
                 )
-                Switch(checked = hidEnabled, onCheckedChange = onHidEnabledChange)
+                HidMasterSwitch(checked = hidEnabled, onCheckedChange = onHidEnabledChange)
             }
             Text(
                 "Off releases every input, unregisters the HID device and removes the notification. " +
