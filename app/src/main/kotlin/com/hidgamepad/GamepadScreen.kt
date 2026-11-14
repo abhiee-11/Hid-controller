@@ -7,7 +7,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -394,8 +397,8 @@ fun GamepadScreen(
     var settingsOpen by remember { mutableStateOf(false) }
     var reportOpen by remember { mutableStateOf(false) }
 
-    // The WASD page's customised key layout. null = the built-in grid. Stored as serialised
-    // fractions; a malformed stored value falls back to the grid on load.
+    // The WASD page's customised key layout. null = the built-in driving layout. Stored as
+    // serialised fractions; a malformed stored value falls back to the built-in one on load.
     var editingLayout by remember { mutableStateOf(false) }
     var customLayout by remember {
         mutableStateOf(wasdLayoutFromStorage(prefs.getString(WASD_LAYOUT_PREF_KEY, null)))
@@ -602,7 +605,7 @@ fun GamepadScreen(
                     onKey = { usage, down ->
                         keyboardKeys = if (down) keyboardKeys + usage else keyboardKeys - usage
                     },
-                    absolute = customLayout,
+                    absolute = customLayout ?: defaultWasdGeometry(),
                     capsById = wasdPool,
                     editMode = editingLayout,
                     selectedKeyId = selectedKeyId,
@@ -1500,7 +1503,7 @@ private fun KeyboardStage(
     }
 }
 
-/** One key on the WASD page: a press-and-hold target that reports while held. */
+/** One key on the WASD page: a flat press-and-hold pad key that reports while held. */
 @Composable
 private fun WasdKeyButton(
     cap: KeyCap,
@@ -1526,7 +1529,7 @@ private fun WasdKeyButton(
             is KeyAction.Fn -> false
         }
     }
-    KeyboardKeyButton(
+    WasdPadKey(
         label = cap.label,
         active = active,
         hapticsEnabled = if (editMode) false else hapticsEnabled,
@@ -1557,38 +1560,63 @@ private fun WasdKeyButton(
     )
 }
 
-/** A thumb cluster: a column of equal-height rows, each row splitting its width across its keys. */
+/**
+ * The WASD keycap: flat, in the app's own key colours. The keyboard page's keycaps travel in
+ * 3D; these do not - they only light up with the accent while held.
+ */
 @Composable
-private fun WasdCluster(
-    rows: List<List<KeyCap>>,
-    modifiers: Int,
-    pressedKeys: Set<Int>,
+private fun WasdPadKey(
+    label: String,
+    active: Boolean,
     hapticsEnabled: Boolean,
     hapticsStrength: Float,
-    onModifier: (Int, Boolean) -> Unit,
-    onKey: (Int, Boolean) -> Unit,
+    onDown: () -> Unit,
+    onUp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        for (row in rows) {
-            Row(
-                Modifier.weight(1f).fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                for (cap in row) {
-                    WasdKeyButton(
-                        cap = cap,
-                        modifiers = modifiers,
-                        pressedKeys = pressedKeys,
-                        hapticsEnabled = hapticsEnabled,
-                        hapticsStrength = hapticsStrength,
-                        onModifier = onModifier,
-                        onKey = onKey,
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                    )
+    var pressed by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val onDownNow by rememberUpdatedState(onDown)
+    val onUpNow by rememberUpdatedState(onUp)
+    val hapticNow by rememberUpdatedState(hapticsEnabled)
+    val strengthNow by rememberUpdatedState(hapticsStrength)
+    val held = pressed || active
+    Box(
+        modifier
+            .background(
+                if (held) PadColors.accent else PadColors.surface,
+                RoundedCornerShape(8.dp),
+            )
+            .border(1.dp, PadColors.border, RoundedCornerShape(8.dp))
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    var wasPressed = false
+                    try {
+                        awaitFirstDown(requireUnconsumed = false)
+                        if (!pressed) {
+                            pressed = true
+                            wasPressed = true
+                            if (hapticNow) HapticBuzz.buzz(context, strengthNow)
+                            onDownNow()
+                        }
+                        waitForUpOrCancellation()
+                    } finally {
+                        if (wasPressed || pressed) {
+                            pressed = false
+                            onUpNow()
+                        }
+                    }
                 }
-            }
-        }
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            label,
+            color = PadColors.text,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
     }
 }
 
@@ -1601,8 +1629,8 @@ private fun WasdStage(
     onModifier: (Int, Boolean) -> Unit,
     onKey: (Int, Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    /** Non-null renders the custom absolute layout (in use, or while editing it). */
-    absolute: List<WasdKeyGeometry>? = null,
+    /** The absolute layout to render: a saved custom one, or the built-in driving layout. */
+    absolute: List<WasdKeyGeometry>,
     /** Every key that can be placed on the page, by storage id. */
     capsById: Map<String, KeyCap> = emptyMap(),
     editMode: Boolean = false,
@@ -1615,9 +1643,9 @@ private fun WasdStage(
     onResetLayout: () -> Unit = {},
     onDone: () -> Unit = {},
 ) {
-    val layout = wasdLayout()
-    if (absolute != null) {
-        WasdLayoutStage(
+    // The built-in driving layout is the default: it renders through the same absolute-position
+    // stage a saved custom layout uses, so keys always report the same way.
+    WasdLayoutStage(
             layout = absolute,
             capsById = capsById,
             modifiers = modifiers,
@@ -1635,64 +1663,14 @@ private fun WasdStage(
             onDone = onDone,
             onModifier = onModifier,
             onKey = onKey,
-            modifier = modifier,
-        )
-        return
-    }
-    // Two rows of keys, not seven: the weights shrink them to fit, so there is nothing to
-    // scroll. (The keyboard page does need its floor-and-scroll; this page does not - a floor
-    // here made the whole page overflow on a short landscape screen.)
-    Column(
-        modifier
-            .fillMaxSize()
-            .clip(RoundedCornerShape(14.dp))
-            .background(RGB_DECK_COLOR)
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        // Shoulder row: the first shoulder on the left, the last on the right, spread apart.
-        Row(Modifier.fillMaxWidth().weight(0.7f), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            layout.shoulders.forEachIndexed { index, cap ->
-                if (index > 0) Spacer(Modifier.weight(2f))
-                WasdKeyButton(
-                    cap = cap, modifiers = modifiers, pressedKeys = pressedKeys,
-                    hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
-                    onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
-            }
-        }
-        Row(Modifier.fillMaxWidth().weight(3f), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            WasdCluster(
-                rows = layout.leftCluster, modifiers = modifiers, pressedKeys = pressedKeys,
-                hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
-                onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(1f).fillMaxHeight(),
-            )
-            // Centre column: the last key fills the rest of the height as a wide bar.
-            Column(Modifier.weight(1.2f).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                layout.centre.forEachIndexed { index, cap ->
-                    WasdKeyButton(
-                        cap = cap, modifiers = modifiers, pressedKeys = pressedKeys,
-                        hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
-                        onModifier = onModifier, onKey = onKey,
-                        modifier = Modifier
-                            .weight(if (index == layout.centre.lastIndex) 2f else 1f)
-                            .fillMaxWidth(),
-                    )
-                }
-            }
-            WasdCluster(
-                rows = layout.rightCluster, modifiers = modifiers, pressedKeys = pressedKeys,
-                hapticsEnabled = hapticsEnabled, hapticsStrength = hapticsStrength,
-                onModifier = onModifier, onKey = onKey, modifier = Modifier.weight(1f).fillMaxHeight(),
-            )
-        }
-    }
+        modifier = modifier,
+    )
 }
 
 /**
- * The WASD page rendered as absolute positions, either because a custom layout was saved, or
- * because the user is editing it right now. Every key fills a rectangle measured in fractions
- * of the pad, so the layout survives window resizing and any page shape.
+ * The WASD page rendered as absolute positions: the built-in driving layout, a saved custom
+ * layout, or the layout being edited right now. Every key fills a rectangle measured in
+ * fractions of the pad, so the layout survives window resizing and any page shape.
  */
 @Composable
 private fun WasdLayoutStage(

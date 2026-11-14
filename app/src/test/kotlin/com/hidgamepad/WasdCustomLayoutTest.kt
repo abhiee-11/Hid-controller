@@ -13,11 +13,40 @@ import org.junit.Test
 class WasdCustomLayoutTest {
 
     @Test
-    fun `the default geometry covers every key on the page exactly once`() {
-        val keys = wasdLayout().keys.map { it.label }
+    fun `the default geometry is the driving layout`() {
+        // Left stack: Space (handbrake) over W (gas) over S (brake). Right pair: A, D (steer).
+        // Esc sits top-right. Every one of them must be placeable from the palette.
         val ids = defaultWasdGeometry().map { it.id }
-        assertEquals(keys.sorted(), ids.sorted())
-        assertEquals("a key appears twice in the default geometry", ids.size, ids.toSet().size)
+        assertEquals(listOf("Esc", "Space", "W", "S", "A", "D"), ids)
+        val pool = assignKeyIds(
+            (wasdLayout().keys + keyboardRows().flatten() + functionRow()).distinct(),
+        )
+        for (id in ids) {
+            assertTrue("$id is not in the palette", pool.containsKey(id))
+        }
+    }
+
+    @Test
+    fun `the driving layout puts the stack on the left and the steer pair on the right`() {
+        val byId = defaultWasdGeometry().associateBy { it.id }
+        val space = byId.getValue("Space")
+        val w = byId.getValue("W")
+        val s = byId.getValue("S")
+        val a = byId.getValue("A")
+        val d = byId.getValue("D")
+        val esc = byId.getValue("Esc")
+        // The stack shares a left edge and runs downward.
+        assertEquals(space.x, w.x, 1e-6f)
+        assertEquals(space.x, s.x, 1e-6f)
+        assertTrue("Space is above W", space.y < w.y)
+        assertTrue("W is above S", w.y < s.y)
+        // The steer pair shares a top edge, A on the left.
+        assertEquals(a.y, d.y, 1e-6f)
+        assertTrue("A is left of D", a.x < d.x)
+        assertTrue("the stack is left of the steer pair", s.x + s.w <= a.x + 0.01f)
+        // Esc is top-right, above the steer pair.
+        assertTrue("Esc is right of centre", esc.x > 0.5f)
+        assertTrue("Esc is near the top", esc.y < a.y)
     }
 
     @Test

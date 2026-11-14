@@ -10,27 +10,17 @@ data class WasdKeyGeometry(val id: String, val x: Float, val y: Float, val w: Fl
 const val MIN_KEY_SIZE = 0.08f
 
 /**
- * The built-in layout: roughly what the page drew before customisation. The ids are the key
- * labels from [wasdLayout].
+ * The built-in layout: a driving pad. Left stack is handbrake/gas/brake ([Space]/[W]/[S]),
+ * the right pair steers ([A]/[D]), [Esc] sits top-right. Positions are fractions of the pad,
+ * so they scale with the window. The ids are the key labels from [wasdLayout].
  */
 fun defaultWasdGeometry(): List<WasdKeyGeometry> = listOf(
-    WasdKeyGeometry("Tab", 0.02f, 0.02f, 0.15f, 0.16f),
-    WasdKeyGeometry("Esc", 0.83f, 0.02f, 0.15f, 0.16f),
-    // Left thumb: Shift / W / A S D.
-    WasdKeyGeometry("Shift", 0.02f, 0.24f, 0.26f, 0.21f),
-    WasdKeyGeometry("W", 0.02f, 0.50f, 0.26f, 0.21f),
-    WasdKeyGeometry("A", 0.02f, 0.76f, 0.085f, 0.215f),
-    WasdKeyGeometry("S", 0.115f, 0.76f, 0.085f, 0.215f),
-    WasdKeyGeometry("D", 0.205f, 0.76f, 0.085f, 0.215f),
-    // Centre column: Enter on top, Space as the wide bar below it.
-    WasdKeyGeometry("Enter", 0.305f, 0.24f, 0.145f, 0.21f),
-    WasdKeyGeometry("Space", 0.305f, 0.50f, 0.145f, 0.475f),
-    // Right thumb: Ctrl / E R / Q F.
-    WasdKeyGeometry("Ctrl", 0.475f, 0.24f, 0.505f, 0.21f),
-    WasdKeyGeometry("E", 0.475f, 0.50f, 0.235f, 0.21f),
-    WasdKeyGeometry("R", 0.72f, 0.50f, 0.235f, 0.21f),
-    WasdKeyGeometry("Q", 0.475f, 0.76f, 0.235f, 0.215f),
-    WasdKeyGeometry("F", 0.72f, 0.76f, 0.235f, 0.215f),
+    WasdKeyGeometry("Esc", 0.885f, 0.152f, 0.085f, 0.134f),
+    WasdKeyGeometry("Space", 0.0f, 0.241f, 0.217f, 0.179f),
+    WasdKeyGeometry("W", 0.0f, 0.429f, 0.217f, 0.205f),
+    WasdKeyGeometry("S", 0.0f, 0.652f, 0.217f, 0.205f),
+    WasdKeyGeometry("A", 0.745f, 0.491f, 0.124f, 0.295f),
+    WasdKeyGeometry("D", 0.876f, 0.491f, 0.124f, 0.295f),
 )
 
 /** Pulls the key inside the pad and enforces the minimum size. Keys larger than the pad shrink. */
