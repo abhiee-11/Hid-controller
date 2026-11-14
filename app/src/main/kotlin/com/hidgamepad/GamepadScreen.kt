@@ -376,6 +376,17 @@ fun GamepadScreen(
         prefs.edit().putString("controller_mode", newMode.name).apply()
     }
 
+    // MainActivity releases the host side on pause. This is the local half: a report is only
+    // emitted when Compose state changes, so without clearing what this screen still believes
+    // is held, the first keypress after resume would re-send a key nobody is holding.
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) resetLocalInputs()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     var settingsOpen by remember { mutableStateOf(false) }
     var reportOpen by remember { mutableStateOf(false) }
 
