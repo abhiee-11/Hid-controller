@@ -101,4 +101,28 @@ class WasdCustomLayoutTest {
             DEFAULT_WASD_GEOMETRY_IDS.sorted(),
         )
     }
+
+    @Test
+    fun `ids are labels, with a suffix when a label repeats`() {
+        val pool = assignKeyIds(
+            listOf(
+                KeyCap("Shift", KeyAction.Modifier(MOD_LEFT_SHIFT)),
+                KeyCap("Shift", KeyAction.Modifier(MOD_RIGHT_SHIFT)),
+                KeyCap("W", KeyAction.Usage(KeyUsage.W)),
+            ),
+        )
+        assertEquals(listOf("Shift", "Shift#2", "W"), pool.keys.toList())
+    }
+
+    @Test
+    fun `the whole key pool gets one id per entry`() {
+        val caps = (wasdLayout().keys + keyboardRows().flatten() + functionRow()).distinct()
+        val pool = assignKeyIds(caps)
+        assertEquals(caps.size, pool.size)
+        assertEquals(pool.size, pool.keys.toSet().size)
+        // Every key the page draws is addable back after removal.
+        for (label in wasdLayout().keys.map { it.label }) {
+            assertTrue("$label is not in the pool", pool.values.any { it.label == label })
+        }
+    }
 }

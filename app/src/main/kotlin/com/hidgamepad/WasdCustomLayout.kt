@@ -46,6 +46,21 @@ fun WasdKeyGeometry.clamped(): WasdKeyGeometry {
 val DEFAULT_WASD_GEOMETRY_IDS: List<String>
     get() = defaultWasdGeometry().map { it.id }
 
+/**
+ * Gives every key a stable storage id: its label, with "#2", "#3"… appended when the same
+ * label appears more than once with a different action (the keyboard page has two Shift keys).
+ */
+fun assignKeyIds(caps: List<KeyCap>): Map<String, KeyCap> {
+    val out = linkedMapOf<String, KeyCap>()
+    val counts = mutableMapOf<String, Int>()
+    for (cap in caps) {
+        val n = (counts[cap.label] ?: 0) + 1
+        counts[cap.label] = n
+        out[if (n == 1) cap.label else "${cap.label}#$n"] = cap
+    }
+    return out
+}
+
 /** Folds a moved or resized key back into a clamped layout list. */
 fun WasdKeyGeometry.resizeBy(factor: Float): WasdKeyGeometry {
     val grown = copy(w = w * factor, h = h * factor)
