@@ -6,9 +6,12 @@ import android.bluetooth.BluetoothHidDeviceAppSdpSettings
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import androidx.core.content.ContextCompat
 import java.util.concurrent.Executor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -241,7 +244,11 @@ class HidGamepadManager(context: Context) {
         mainHandler.removeCallbacks(retryRegister)
         registerRetryCount = 0
         try {
-            hd.unregisterApp()
+            // lint wants the check inline; do it explicitly rather than through the helper.
+            val ok = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                ContextCompat.checkSelfPermission(appContext, android.Manifest.permission.BLUETOOTH_CONNECT) ==
+                PackageManager.PERMISSION_GRANTED
+            if (ok) hd.unregisterApp()
         } catch (_: Exception) {
             Log.w(TAG, "unregisterApp failed while switching profile")
         }
@@ -692,7 +699,14 @@ class HidGamepadManager(context: Context) {
     private fun runtimeTargetSummary(): String {
         val hd = hidDevice
         val host = hostDevice
-        return "registered=$appRegistered host=${host?.let { deviceName(it) + "/" + it.address }} hidDevice=${hd != null} connState=${host?.let { hd?.getConnectionState(it) } ?: -1}"
+        val connState =
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                ContextCompat.checkSelfPermission(appContext, android.Manifest.permission.BLUETOOTH_CONNECT) ==
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                if (host != null && hd != null) hd.getConnectionState(host) else -1
+            } else -1
+        return "registered=$appRegistered host=${host?.let { deviceName(it) + "/" + it.address }} hidDevice=${hd != null} connState=$connState"
     }
 
     private fun logMouseSend(index: Int, total: Int, sourceState: MouseState, chunk: MouseState) {
@@ -817,7 +831,12 @@ class HidGamepadManager(context: Context) {
         mainHandler.removeCallbacks(retryRegister)
         hidDevice?.let { hd ->
             try {
-                if (appRegistered) hd.unregisterApp()
+                if (appRegistered && (
+                    Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                        ContextCompat.checkSelfPermission(appContext, android.Manifest.permission.BLUETOOTH_CONNECT) ==
+                        PackageManager.PERMISSION_GRANTED
+                    )
+                ) hd.unregisterApp()
             } catch (_: Exception) {
             }
             try {
